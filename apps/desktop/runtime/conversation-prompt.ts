@@ -11,7 +11,7 @@ const COMPACT_NOTICE =
 
 const UI_DESIGN_NOUN = /\b(?:ui|gui|screen|menu|hud|shop|store|inventory|dialog|popup|panel|leaderboard|notification|toast|wheel|reel|daily rewards?|battle pass|admin(?:istration)? panel|select(?:ion)? screen)\b/i;
 const UI_DESIGN_ACTION = /\b(?:make|create|build|design|draw|recreate|copy|match|restyle|retheme|edit|modify|change|update|add|remove|resize|move|polish)\b/i;
-const UI_DESIGN_STYLE = /\b(?:stud|studded|simulator(?:-style)?|pet[ -]?simulator|visual|layout|theme|responsive)\b/i;
+const UI_DESIGN_STYLE = /\b(?:studs?|studded|simulator(?:-style)?|pet[ -]?simulator|visual|layout|theme|responsive)\b/i;
 
 const UI_DESIGN_SKILL = "roblox-ui-design";
 

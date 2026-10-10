@@ -38,6 +38,7 @@ Seed the states a real shop shows, inside the layout's own cells and bands:
 ## Finishing detail
 
 - **SIM gloss:** on sticker buttons and cards, a white child frame with the same corner and a top-down transparency gradient (about 0.55 at the top, fully clear by the middle), above the gradient face and below the text. STUDS already carries its shine in the face gradient; never cover the stud pattern.
+- **MODERN STUDS:** tier is the card's palette colour, tags are the theme's `chip` tag, tabs and balances follow the MODERN STUDS selected body (tab rail outside the panel, balances on the first content row), and no SIM gloss overlay: the lip and face gradient are its shine.
 - **Outline scaling:** record each `UIStroke` with its guide thickness and multiply by `viewport height / 1080` (minimum 1) whenever the viewport changes, so the guide's values stay exact at 1080p and phones do not get heavy outlines.
 - **Text caps:** give `TextScaled` labels a `UITextSizeConstraint` so a large screen does not inflate them.
 

@@ -117,6 +117,8 @@ Each panel has its own stable header colour, for example Shop green, Index cyan,
 ### Light variant: white studded body, straddling title and close
 
 ```lua
+local PAD = 14 -- content inset, px (the same value the Dark variant uses)
+
 local function makePanelLight(gui, name, widthScale, heightScale, title, iconId)
 	local panel = Instance.new("ImageLabel") -- the body is the stud image, so straddling children sit on one painted element
 	panel.Name = name

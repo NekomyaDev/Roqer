@@ -95,6 +95,13 @@ test("clear UI design work receives the deterministic host route", () => {
   assert.match(prompt, /Make a stud themed potion shop$/);
 });
 
+test("a theme named in the plural still marks UI work without an action verb", () => {
+  // "studs" used to miss the style word, so a verbless MODERN STUDS request
+  // reached the provider with no route.
+  const prompt = buildConversationPrompt({ messages: [], truncated: false }, "A modern studs shop with three gamepasses");
+  assert.match(prompt, /Roqer host route: this request is UI-design work/);
+});
+
 test("non-design shop behavior does not get the visual route merely for saying shop", () => {
   const prompt = "Why does my shop purchase handler deduct the wrong amount?";
   assert.equal(buildConversationPrompt({ messages: [], truncated: false }, prompt), prompt);
