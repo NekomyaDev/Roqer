@@ -90,7 +90,8 @@ test("clear UI design work receives the deterministic host route", () => {
   const prompt = buildConversationPrompt({ messages: [], truncated: false }, "Make a stud themed potion shop");
   assert.match(prompt, /Roqer host route: this request is UI-design work/);
   assert.match(prompt, /load `roblox-ui-design` before any Studio mutation/i);
-  assert.match(prompt, /recovered active-theme parts .* `references\/selected\/<theme>\/<layout>\.md`/i);
+  assert.match(prompt, /active-theme parts .* `references\/selected\/<theme>\/<layout>\.md`/i);
+  assert.match(prompt, /SIM, STUDS, or MODERN STUDS screen/);
   assert.match(prompt, /Make a stud themed potion shop$/);
 });
 

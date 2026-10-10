@@ -54,6 +54,21 @@ Normalized policy:
 - the polish layer only adds: it never changes a theme construction rule, color, asset id, or a selected body's geometry, and any conflict resolves in favour of the theme and selected body;
 - specialized templates keep their maintained animation, get no polish layer, and the agent must not hand-write new behavior into them.
 
+## MODERN STUDS vs STUDS construction rules
+
+MODERN STUDS is repository-authored, not recovered, and deliberately departs from several STUDS rules: it uses `UICorner` on every block, a base lip instead of the 4-layer bevel, subdued studs embossed in the face instead of an overlay that must read clearly, a Dark header band or Light straddling title instead of the flat title bar, the Robux text glyph instead of the Robux image on price buttons, and a world blur when a panel opens.
+
+Normalized policy:
+- each theme's rules apply only while that theme is active; never mix the constructions on one screen;
+- an existing STUDS screen stays STUDS on edit; restyling it to MODERN STUDS is a structural redesign the user must ask for;
+- MODERN STUDS has no wheel or reel template, so those layouts deploy the STUDS template unchanged and the run says so.
+
+## MODERN STUDS vs polish layer
+
+The polish layer puts tabs in a row at the top of the content and SIM balance pills on the top edge. MODERN STUDS selected bodies put tabs in a rail outside the panel edge and balances on the first content row.
+
+Normalized policy: the MODERN STUDS selected body wins, as for any theme or selected body; the polish layer still adds its motion, tier, tag, owned, and discount states inside the theme's blocks.
+
 ## Conflict priority
 
 When executing:

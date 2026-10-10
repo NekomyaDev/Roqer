@@ -6,6 +6,7 @@ Use after implementation.
 - [ ] Creation vs edit was correctly identified.
 - [ ] Exactly one semantic layout selected for new UI.
 - [ ] With SIM/STUDS, the recovered theme body and matching recovered selected layout body were loaded and followed.
+- [ ] With MODERN STUDS, both theme parts and the matching `selected/modern-studs/<layout>.md` body were loaded and followed.
 - [ ] Ordinary builder starts with the layout marker; canonical templates preserve their managed prefix before it.
 - [ ] Specialized layout used exact template deployment, not hand-authored geometry.
 - [ ] Existing UI edit did not create a second builder or ScreenGui.
@@ -57,6 +58,16 @@ Use after implementation.
 - [ ] Title icon/title/close geometry matches recovered body; close is inside title bar.
 - [ ] Integral asset IDs used exactly.
 - [ ] Interactive targets meet minimum size.
+
+## MODERN STUDS
+- [ ] Every block was built with the theme's `makeSurface`: rounded, black-outlined, lipped, gradient face with tinted studs.
+- [ ] One panel variant on the screen (Dark band or Light straddling title); close is the red tile with a white X.
+- [ ] No stud pixels outside a rounded corner in the screenshot.
+- [ ] Every item art sits on the sunburst; Robux prices use the text glyph.
+- [ ] Exactly one active tab in colour, the rest grey; tab rails sit outside the panel edge.
+- [ ] Panels opened with blur and pop; HUD, sidebar, clicker, and toast screens did not blur.
+- [ ] Only part 1's asset IDs, `resolve_icon` results, or verified project art; no other game's sprites.
+- [ ] A wheel or reel used the STUDS template unchanged, and the reply said so.
 
 ## Validation
 - [ ] `inspect_ui` audit ran on the live client after the last interface change and reported no problems (Roqer will not verify the run otherwise).

@@ -1,6 +1,6 @@
 ---
 name: roblox-ui-design
-description: "Mandatory design route for creating or editing Roblox screens: menus, HUDs, shops, dialogs, inventories, leaderboards, notifications, wheels, and reels. Uses recovered canonical SIM/STUDS theme+layout bodies, exact specialized templates, curated assets, and bounded visual validation."
+description: "Mandatory design route for creating or editing Roblox screens: menus, HUDs, shops, dialogs, inventories, leaderboards, notifications, wheels, and reels. Uses recovered canonical SIM/STUDS theme+layout bodies, the repository-authored MODERN STUDS theme, exact specialized templates, curated assets, and bounded visual validation."
 ---
 
 # Roblox UI Design
@@ -17,7 +17,7 @@ First decide whether the request creates a new UI or edits an existing one.
 
 The host marks clear UI-creation requests so this entrypoint is not optional. Minimize skill-loading turns.
 
-1. Resolve the requested theme and semantic layout from the user request when they are already obvious. Inspect nearby UI/builders first only when project context can actually change that route.
+1. Resolve the requested theme and semantic layout from the user request when they are already obvious. Inspect nearby UI/builders first only when project context can actually change that route. Themes: **SIM** (rounded white cartoon cards), **STUDS** (square blocky bevel stacks with prominent studs), **MODERN STUDS** (rounded, outlined, lipped studded blocks; chosen when the request asks for modern, rounded, glossy, or "new simulator style" studs, or the project's builder is marked `-- theme: modern-studs`). A plain stud or blocky request without a modern cue stays STUDS.
 2. For a normal new UI, load all resources needed for the chosen route in **one `load_skill` call after this entrypoint**:
    - `references/core/generation.md`
    - `references/core/assets.md`
@@ -25,10 +25,11 @@ The host marks clear UI-creation requests so this entrypoint is not optional. Mi
    - `references/core/polish.md`, except for `wheel-spin` and `vertical-reel-roll`
    - with **SIM**: `references/themes/recovered/sim-1.md`, `sim-2.md`, `sim-3.md`, and `references/selected/sim/<layout>.md`
    - with **STUDS**: `references/themes/recovered/studs-1.md`, `studs-2.md`, and `references/selected/studs/<layout>.md`
+   - with **MODERN STUDS**: `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md`; for `wheel-spin` and `vertical-reel-roll` that body routes to the STUDS template
    - with no packaged theme: the chosen generic layout reference instead of recovered theme/selected-body resources
    - for `wheel-spin` or `vertical-reel-roll`: also load the specialized contract and exact `(theme, layout)` Lua template in that same call.
-3. Recovered theme parts are authoritative for construction/style; the recovered selected body is authoritative for geometry/composition. Do not also load the short generic layout reference when a recovered selected body is active.
-4. Resolve all ordinary icons with one `resolve_icon` call. Exact assets named by the active recovered theme/layout or specialized template always win. Never invent IDs or substitute drawn/emoji shapes for a catalog icon.
+3. Recovered theme parts are authoritative for construction/style; the recovered selected body is authoritative for geometry/composition. MODERN STUDS theme parts and selected bodies hold the same authority for that theme. Do not also load the short generic layout reference when a selected body is active.
+4. Resolve all ordinary icons with one `resolve_icon` call. Exact assets named by the active theme/layout body or specialized template always win. Never invent IDs or substitute drawn/emoji shapes for a catalog icon.
 
 If project inspection was genuinely required before the route could be known, one additional route-resource load after that inspection is acceptable. Do not split a known route across several model turns.
 
@@ -44,7 +45,7 @@ For reference-image reconstruction only, a coherent pixel design canvas plus uni
 
 ### Editing
 
-Load [editing](references/core/editing.md), locate the current builder, and preserve its identity, layout, theme, and unrelated geometry. Do not classify or load a new layout unless the user explicitly requests a structural redesign. If an edit adds a component to an existing SIM/STUDS screen, load the recovered active-theme parts and `references/selected/<theme>/<layout>.md` only when exact sibling construction is not already visible in source.
+Load [editing](references/core/editing.md), locate the current builder, and preserve its identity, layout, theme, and unrelated geometry. Do not classify or load a new layout unless the user explicitly requests a structural redesign. If an edit adds a component to an existing SIM/STUDS screen, load the recovered active-theme parts and `references/selected/<theme>/<layout>.md` only when exact sibling construction is not already visible in source; for a MODERN STUDS screen, load `references/themes/modern-studs/part-1.md` and `part-2.md` the same way.
 
 ## Layout taxonomy for new UI
 
@@ -73,8 +74,8 @@ For visual/design decisions use this order:
 
 1. exact specialized template + current specialized contract;
 2. supplied reference image for composition when reproducing one;
-3. recovered selected body at `references/selected/<theme>/<layout>.md`;
-4. recovered packaged theme body;
+3. selected body at `references/selected/<theme>/<layout>.md` (recovered for SIM/STUDS, repository-authored for MODERN STUDS);
+4. packaged theme body (recovered SIM/STUDS parts, or MODERN STUDS `part-1.md`/`part-2.md`);
 5. neutral/shared layout summary;
 6. generic `roblox-gui` layout advice.
 
@@ -96,12 +97,13 @@ Current Roqer system/developer instructions and current core execution reference
 |---|---|---|
 | SIM | [contract](references/specialized/wheel-spin.md), [template](templates/sim/wheel-spin.lua) | [contract](references/specialized/vertical-reel-roll.md), [template](templates/sim/vertical-reel-roll.lua) |
 | STUDS | [contract](references/specialized/wheel-spin.md), [template](templates/studs/wheel-spin.lua) | [contract](references/specialized/vertical-reel-roll.md), [template](templates/studs/vertical-reel-roll.lua) |
+| MODERN STUDS | no template: [route](references/selected/modern-studs/wheel-spin.md) to the STUDS wheel | no template: [route](references/selected/modern-studs/vertical-reel-roll.md) to the STUDS reel |
 
-If a specialized layout's theme is not known from the project/request, ask once before mutating Studio. Never substitute a theme, redraw the geometry, or move the managed prefix. Customize only documented `CONFIG` values and preserve protected template bytes exactly.
+If a specialized layout's theme is not known from the project/request, ask once before mutating Studio. Never substitute a theme except the documented MODERN STUDS → STUDS route above, never redraw the geometry, and never move the managed prefix. Customize only documented `CONFIG` values and preserve protected template bytes exactly.
 
 ## Validation and stopping
 
-After a meaningful create/edit, compare the live result against the active recovered body's **Measurements** and **Rules**, not merely against whether controls exist. For a straightforward static visual creation, one fresh playtest/render cycle with an `inspect_ui` audit, a screenshot, and a visual review is sufficient when it passes. The audit is required: Roqer does not verify a run that changed interface until an audit after the last interface change reports no problems. Fix what it names (covered or edge-crossing text, content past the scroll canvas, text that does not fit) and audit again; see [validation](references/core/validation.md). Interaction evidence is required only when the user requested behavior, when interaction is part of the layout's requested function, or when an action is necessary to expose the visual state being evaluated.
+After a meaningful create/edit, compare the live result against the active selected body's **Measurements** and **Rules**, not merely against whether controls exist. For a straightforward static visual creation, one fresh playtest/render cycle with an `inspect_ui` audit, a screenshot, and a visual review is sufficient when it passes. The audit is required: Roqer does not verify a run that changed interface until an audit after the last interface change reports no problems. Fix what it names (covered or edge-crossing text, content past the scroll canvas, text that does not fit) and audit again; see [validation](references/core/validation.md). Interaction evidence is required only when the user requested behavior, when interaction is part of the layout's requested function, or when an action is necessary to expose the visual state being evaluated.
 
 Do not click every visible control merely because it exists. Do not test Close on a static visual-only request when doing so only hides the screen and forces another playtest. A screenshot being captured is evidence acquisition, not proof the composition is correct.
 

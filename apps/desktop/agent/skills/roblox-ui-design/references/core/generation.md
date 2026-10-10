@@ -7,7 +7,7 @@ Ordinary Roblox GUI is created through a builder **LocalScript**, not as loose e
 For a new UI:
 1. Inspect existing Studio/UI context only when it can affect the route.
 2. Choose the semantic layout and theme.
-3. If SIM/STUDS is active, load the recovered theme parts named by the entrypoint plus `references/selected/<theme>/<layout>.md`; that selected body is the geometry/composition authority.
+3. If SIM/STUDS is active, load the recovered theme parts named by the entrypoint plus `references/selected/<theme>/<layout>.md`; that selected body is the geometry/composition authority. With MODERN STUDS, load `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md` the same way.
 4. Resolve required icons/assets before or while writing the builder.
 5. Start an ordinary builder with `-- layout: <slug>`. Canonical wheel/reel templates keep their managed prefix before this marker.
 6. Build a stable named ScreenGui and stable builder LocalScript.

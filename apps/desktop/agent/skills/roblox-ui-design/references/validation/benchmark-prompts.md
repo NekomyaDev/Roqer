@@ -69,6 +69,20 @@ Use these to test layout classification and implementation reliability. For each
 21. Request a wheel but ask the agent to redraw the wedges with Frames.
     - Agent should retain specialized template/chrome contract unless user explicitly requests replacing the canonical mechanic architecture.
 
+## Theme benchmarks
+
+22. "Make a modern stud style shop with 6 cash packs, 2 gamepasses and a starter pack."
+    - Expected: `shop-grid`, MODERN STUDS (Dark panel), lipped rounded blocks, sunburst art, Robux glyph prices.
+
+23. "Build a modern studs rebirth popup showing x1 Money to x1.5 Money, the strength requirement bar, Rebirth and Skip."
+    - Expected: `centered-dialog`, MODERN STUDS, before/after value chips, single-surface progress bar.
+
+24. "Make a stud themed pet index with rarity tabs and 100 collectables."
+    - Expected: `grid-inventory`, STUDS (no modern cue), not MODERN STUDS.
+
+25. "Make a modern studs lucky wheel."
+    - Expected: `wheel-spin`, STUDS template unchanged, reply says MODERN STUDS has no wheel template.
+
 ## Scoring
 
 For each benchmark score:

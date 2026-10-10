@@ -342,6 +342,8 @@ test("a themed shop route arrives complete in at most two inline results", async
       "references/themes/recovered/sim-3.md", "references/selected/sim/shop-grid.md"],
     studs: [...core, "references/themes/recovered/studs-1.md", "references/themes/recovered/studs-2.md",
       "references/selected/studs/shop-grid.md"],
+    modernStuds: [...core, "references/themes/modern-studs/part-1.md", "references/themes/modern-studs/part-2.md",
+      "references/selected/modern-studs/shop-grid.md"],
   };
   for (const [theme, route] of Object.entries(routes)) {
     const run = createSkillToolRunner(pack);

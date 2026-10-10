@@ -231,7 +231,7 @@ test("Roblox UI skill exposes selective resources and exact theme-specific templ
   const validation = await runtime.skillLibrary.load("roblox-ui-design", "references/core/validation.md");
   assert.match(validation.content, /three failed fix attempts/);
   assert.match(validation.content, /two consecutive fixes/);
-  for (const theme of ["sim", "studs"]) {
+  for (const theme of ["sim", "studs", "modern-studs"]) {
     const document = await runtime.skillLibrary.load("roblox-ui-design", `references/themes/${theme}.md`);
     assert.match(document.content, /350×70/);
   }

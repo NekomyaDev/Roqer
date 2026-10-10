@@ -16,14 +16,14 @@ const UI_DESIGN_STYLE = /\b(?:stud|studded|simulator(?:-style)?|pet[ -]?simulato
 const UI_DESIGN_SKILL = "roblox-ui-design";
 
 const UI_DESIGN_ROUTE_NOTICE =
-  "[Roqer host route: this request is UI-design work. Load `roblox-ui-design` before any Studio mutation and follow its creation/editing route. For a new SIM/STUDS screen, load the recovered active-theme parts named by `roblox-ui-design` plus `references/selected/<theme>/<layout>.md` before writing UI. The recovered selected theme+layout body owns composition/geometry over generic `roblox-gui` advice.]";
+  "[Roqer host route: this request is UI-design work. Load `roblox-ui-design` before any Studio mutation and follow its creation/editing route. For a new SIM, STUDS, or MODERN STUDS screen, load the active-theme parts named by `roblox-ui-design` (recovered for SIM/STUDS) plus `references/selected/<theme>/<layout>.md` before writing UI. That selected theme+layout body owns composition/geometry over generic `roblox-gui` advice.]";
 
 /**
  * The same route for a conversation that already holds the entrypoint. Asking
  * for it again would cost a tool round trip that only returns a pointer.
  */
 const UI_DESIGN_ROUTE_LOADED_NOTICE =
-  "[Roqer host route: this request is UI-design work. `roblox-ui-design` is already loaded in this conversation; follow its creation/editing route before any Studio mutation and load only the further references this request needs. For a new SIM/STUDS screen, the recovered active-theme parts and `references/selected/<theme>/<layout>.md` it names own composition/geometry over generic `roblox-gui` advice.]";
+  "[Roqer host route: this request is UI-design work. `roblox-ui-design` is already loaded in this conversation; follow its creation/editing route before any Studio mutation and load only the further references this request needs. For a new SIM, STUDS, or MODERN STUDS screen, the active-theme parts and `references/selected/<theme>/<layout>.md` it names own composition/geometry over generic `roblox-gui` advice.]";
 
 /** Whether the provider still holds a client skill's entrypoint that Roqer delivered to it. */
 export type SkillLoaded = (name: string) => boolean;

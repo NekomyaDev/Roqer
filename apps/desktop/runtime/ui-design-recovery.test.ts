@@ -28,6 +28,64 @@ test("all 28 recovered SIM/STUDS selected layout bodies ship with the desktop ag
   }
 });
 
+/** Every `rbxassetid://<digits>` in a document. */
+function assetIds(source: string): string[] {
+  return [...source.matchAll(/rbxassetid:\/\/(\d+)/g)].map((match) => match[1]);
+}
+
+/**
+ * MODERN STUDS is repository-authored from a study of other games' UI. Its
+ * bodies must say so, and it may name only IDs the repository already ships
+ * (the STUDS theme and the icon catalog) or the two public Creator Store stud
+ * decals it documents. A sprite copied out of a studied game would be
+ * someone else's art in every screen Roqer builds.
+ */
+test("the MODERN STUDS theme ships complete, labelled as authored, with only vetted asset IDs", async () => {
+  const parts = [
+    await read("references/themes/modern-studs.md"),
+    await read("references/themes/modern-studs/part-1.md"),
+    await read("references/themes/modern-studs/part-2.md"),
+  ];
+  const bodies: string[] = [];
+  for (const layout of LAYOUTS) {
+    const source = await read(`references/selected/modern-studs/${layout}.md`);
+    assert.match(source, /# SELECTED LAYOUT GUIDE/, `modern-studs/${layout} is not a selected body`);
+    assert.match(source, new RegExp(`layout=\\"${layout}\\"`), `modern-studs/${layout} no longer identifies its route`);
+    assert.match(source, /Repository-authored/, `modern-studs/${layout} must not pass as recovered guidance`);
+    bodies.push(source);
+  }
+  for (const layout of ["wheel-spin", "vertical-reel-roll"]) {
+    const source = await read(`references/selected/modern-studs/${layout}.md`);
+    assert.match(source, new RegExp(`templates/studs/${layout}\\.lua`), `${layout} must route to the STUDS template`);
+  }
+
+  const kit = parts[1];
+  assert.match(kit, /local function makeSurface/);
+  assert.match(kit, /Instance\.new\("UICorner"\)/);
+  assert.match(kit, /ApplyStrokeMode\.Border/);
+  assert.match(kit, /lip = 0\.12/);
+  assert.match(kit, /utf8\.char\(0xE002\)/);
+  assert.match(kit, /rbxassetid:\/\/92521981645530/);
+  assert.match(kit, /rbxassetid:\/\/91084849147872/);
+  // Public decals are documented decal -> image, and the image is what ships.
+  assert.match(kit, /6927295857 "Studs" \| `rbxassetid:\/\/6927295847`/);
+  assert.match(kit, /12055407253 "stud" \| `rbxassetid:\/\/12055407192`/);
+  assert.match(parts[2], /350×70/);
+  assert.match(parts[2], /BlurEffect/);
+  assert.match(parts[2], /gui\.Destroying:Connect\(function\(\) blur:Destroy\(\) end\)/);
+
+  const vetted = new Set([
+    ...assetIds(await read("references/themes/studs.md")),
+    ...assetIds(await read("references/themes/recovered/studs-1.md")),
+    ...assetIds(await read("references/themes/recovered/studs-2.md")),
+    ...assetIds(await read("references/icons/index.md")),
+    "6927295847", "12055407192",
+  ]);
+  for (const id of assetIds([...parts, ...bodies].join("\n"))) {
+    assert.ok(vetted.has(id), `MODERN STUDS names rbxassetid://${id}, which the repository has not vetted`);
+  }
+});
+
 test("the recovered STUDS shop keeps the composition anchors that prevent viewport stretching", async () => {
   const source = await read("references/selected/studs/shop-grid.md");
   assert.match(source, /Panel: 45% screen width, centered/);
