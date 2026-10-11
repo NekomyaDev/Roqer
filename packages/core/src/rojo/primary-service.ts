@@ -8,7 +8,7 @@ import { createIdentityHistory, currentStudioOwner, rememberIdentities, type Stu
 import { publicToolErrorBody } from '../mcp-runtime.js';
 
 export const ROJO_DELEGATE_PROTOCOL = 1;
-export const ROJO_SOURCE_TOOLS = new Set(['get_script_source', 'set_script_source', 'edit_script_lines', 'edit_script_batch', 'insert_script_lines', 'delete_script_lines', 'find_and_replace_in_scripts']);
+export const ROJO_SOURCE_TOOLS = new Set(['get_script_source', 'set_script_source', 'edit_script_lines', 'edit_script_batch', 'insert_script_lines', 'delete_script_lines', 'find_and_replace_in_scripts', 'build_instances', 'set_properties']);
 export const isRojoSourceCall = (name: string, args: Record<string, unknown>): boolean => ROJO_SOURCE_TOOLS.has(name) || (name === 'manage_instance' && (args.action === 'link_project' || args.action === 'unlink_project'));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_SCOPES = 64;

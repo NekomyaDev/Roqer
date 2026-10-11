@@ -42,7 +42,7 @@ export const currentRojoCall = (): RojoCallContext | undefined => calls.getStore
 export const withRojoCall = <T>(context: RojoCallContext, run: () => T): T => calls.run(context, run);
 export const clientProjectPath = (project: string): string => path.resolve(currentRojoCall()?.cwd ?? process.cwd(), project);
 
-/** Only source/link handlers enter this context; lifecycle tools keep their owner. */
+/** Only project-aware handlers enter this context; lifecycle tools keep their owner. */
 export function createRojoClientScope(id: string, defaultProject?: string, delegated = false): RojoClientScope {
   const scope: RojoClientScope = {
     id, defaultProject, defaultAttempted: false, linking: false, version: 0, identities: createIdentityHistory(),

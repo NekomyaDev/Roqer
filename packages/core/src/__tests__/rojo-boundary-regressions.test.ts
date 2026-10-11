@@ -57,7 +57,7 @@ describe('primary authority boundary regressions (real disk, simulated Studio ob
     expect((await guard.beforeRequest('/api/start-playtest', 'place:42'))?.refusal?.errorCode).toBe('rojo_sync_unknown');
   });
 
-  test.each(['set_script_source', 'manage_instance'])('inspector without an allowlist refuses hidden %s before invoke', async (toolName) => {
+  test.each(['set_script_source', 'manage_instance', 'build_instances', 'set_properties'])('inspector without an allowlist refuses hidden %s before invoke', async (toolName) => {
     const invoke = jest.fn(async () => ({ content: [{ type: 'text', text: '{}' }] }));
     const owner = new RojoPrimaryService(new BridgeService(), invoke, 'inspector');
     const request: RojoDelegateRequest = { protocol: 1, clientId: randomUUID(), operationId: randomUUID(), epoch: owner.epoch, kind: 'call', toolName,

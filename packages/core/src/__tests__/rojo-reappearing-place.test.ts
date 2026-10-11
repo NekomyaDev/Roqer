@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
+import osModule from 'os';
 import * as path from 'path';
 import { BridgeService } from '../bridge-service.js';
 import { createHttpServer, type RobloxStudioHttpApp } from '../http-server.js';
@@ -8,6 +9,7 @@ import { RojoIntegration } from '../rojo/index.js';
 import { sourceRevision } from '../rojo/source-revision.js';
 import * as syncWait from '../rojo/sync-wait.js';
 import { StudioInstanceManager } from '../studio-instance-manager.js';
+import { stubWindowsProcessObserver } from './rojo-process-observer-fixture.js';
 
 // Actual Bridge/Tools/ownership and temporary disk writes. Studio delivery and
 // Rojo CLI output are fixtures; this suite never starts Studio or a Rojo server.
@@ -40,6 +42,8 @@ describe('reappearing published identities (actual host paths, simulated Studio)
 
   beforeEach(() => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'roqer identity ownership '));
+    jest.spyOn(osModule, 'homedir').mockReturnValue(path.join(directory, 'private-home'));
+    stubWindowsProcessObserver();
     offset = 0; const realNow = Date.now;
     jest.spyOn(Date, 'now').mockImplementation(() => realNow() + offset);
     jest.spyOn(syncWait, 'waitForStudio').mockResolvedValue('pending');

@@ -6,8 +6,10 @@ edits also land in the file Rojo syncs from, so they show up in `git diff` and
 survive your next Rojo build. A place with no linked project behaves exactly
 as it does without this page.
 
-Linking does not create new script files, move or rename anything, or persist
-models. It changes where an edit to an *existing*, Rojo-owned script is saved.
+Linking changes where an edit to an existing, Rojo-owned script is saved, and
+how `build_instances` and `set_properties` change what the project holds: new
+scripts and models, removals, renames and moves are saved to the project's
+files, and Rojo makes them in Studio.
 
 ## What you need
 
@@ -91,7 +93,7 @@ MCP server keeps running; they do not survive a restart, so relink after one.
 
 ## Starting a new playtest after an edit
 
-After this bridge saves a Rojo-owned source file, a new solo or multiplayer
+After a script source tool edits an existing Rojo-owned file, a new solo or multiplayer
 playtest checks the current disk revision against the intended edit-mode Studio
 script. A pending write returns `rojo_sync_pending`; an unavailable script,
 ambiguous path, or ownership check returns `rojo_sync_unknown`. Reconnect Rojo,
@@ -105,7 +107,11 @@ raw proxy starts. A different desktop run or MCP client cannot clear a pending
 edit by unlinking or exiting. Each MCP process still owns its own project links;
 the primary's stdio and HTTP clients share its local links. Source operations
 from follower processes are delegated to that primary while retaining their
-own binding state. A plain client keeps the existing synchronous dispatch path.
+own binding state. Project-aware `build_instances` and `set_properties` calls
+use that same client context, so a follower does not lose its project's save
+route. Their structural saves keep the verification described below; they do
+not themselves add new records to this source-edit ledger. A plain client keeps
+the existing synchronous dispatch path.
 
 Relative project paths use the caller's working directory. Delegation carries a
 bounded set of host variables for PATH, home/configuration locations and Git
@@ -121,7 +127,7 @@ sources after restarting. A record can be retired only on the same confirmed
 Studio session, after both its file and script are gone and a fresh project map
 confirms removal or remapping. A missing owner or only one missing side keeps
 the result unknown. The barrier covers the existing MCP start endpoints,
-not manual F5 or arbitrary Luau execution. Controlled writes cannot interleave
+not manual F5 or arbitrary Luau execution. Controlled source edits cannot interleave
 with validation and enqueue; a final disk check catches external saves during
 validation, without claiming an atomic transaction with arbitrary editors.
 
@@ -187,12 +193,269 @@ file-backed script, a successful edit adds `saved: { file, sync }`, where
 - `diverged` — the file is saved, but Studio moved to some other content in
   the meantime; a `hint` says to read both sides before editing again.
 
+If the file was saved but releasing its write lease failed, `saved` also
+contains `lockReleaseWarning`. The edit did happen; read the result before
+retrying rather than treating the warning as an unapplied write. A
+`rojo_conflict` refusal carries the same warning when its lease could not be
+released; the refusal, its revisions and its text stand. The warning names
+the lease folder, and Roqer keeps retrying the release for about a minute.
+
 Roqer never writes Studio directly to force a sync; it only waits briefly and
 reports what it saw. On a `studio_only` script, the edit writes Studio exactly
 as it always did, and the result adds `persistence: "studio_only"` and a
 `persistenceNote` explaining why.
 
+## New instances, removals, renames and moves
+
+On a linked place, `build_instances` and `set_properties` first ask Studio
+what the call would do, without changing anything. Whatever of it the project
+owns, or would hold, is then saved to the project's files, and Rojo makes the
+change in Studio. Roqer never also makes it in Studio: a new instance would
+then appear twice once Rojo delivered the files, and a removal or rename made
+only in Studio would be undone the next time Rojo syncs.
+
+That covers:
+
+- a new instance tree going into an instance the project gives a folder
+  (`build_instances` `create` or `clone`);
+- removing something the project's files make (`build_instances` `remove`,
+  including removing a build root);
+- renaming it (`build_instances` `set` with a `name`, or `set_properties`
+  `Name`), and moving it into another project folder (`set_properties`
+  `Parent`).
+
+An instance has a folder when the project maps it with `$path` to a
+directory, or when it sits in such a directory as a subfolder, including a
+script stored as `Name/init.luau` and a folder holding its own
+`default.project.json`. Roqer reads that from the project file (and any
+nested project file it points to), never from where sibling files happen to
+be.
+
+### What a new tree becomes
+
+- a tree with no script in it: one `Name.rbxm`, exactly as Studio
+  serializes it (binary, so `git diff` shows that it changed, not what);
+- a ModuleScript: `Name.luau`; a Script: `Name.server.luau`; a LocalScript:
+  `Name.client.luau`;
+- a script with children: a `Name/` folder holding `init.luau` (or
+  `init.server.luau`, `init.client.luau`) and its children;
+- a Folder that holds scripts: a `Name/` folder;
+- any other instance that holds scripts (a Model, a Tool): a `Name/` folder
+  with an `init.meta.json` naming its class, so its scripts stay files of
+  their own; its children without scripts are `.rbxm` files in it.
+
+A tree is serialized only once it is known to be saved, by a second plan
+call that asks for it. The extension of new scripts follows whichever of
+`.lua` and `.luau` the project's scripts already use most (packages under
+`_Index` aside), `.luau` when tied. `emitLegacyScripts` is read from the
+project file that governs the folder, the nested one when there is one,
+since Rojo does not carry it into a nested project. With `"emitLegacyScripts":
+false`, a Script with RunContext Client is `Name.client.luau`, and one with
+RunContext Legacy or Server is `Name.server.luau`, which Rojo builds with
+RunContext Server. New scripts are saved with LF line endings and no BOM, the
+way Rojo delivers them.
+
+### Removals
+
+The instance's files go: a script's file and its `Name.meta.json`, a model
+file, or the whole folder of a folder-backed instance. A folder goes only when
+Rojo syncs everything in it (a `.gitkeep` aside); one that also holds other
+files is refused, so nothing Rojo does not know about is deleted with it.
+Every removed file or folder is moved, in one rename, to a backup folder
+outside the project, under your system's temp folder in `roqer-rojo-backups`,
+and the result names it in `saved.backup`. (A single rename matters: Rojo
+7.7's server crashes on Windows when a folder's files are deleted before the
+folder itself. When the backup folder is on another drive than the project,
+the files are copied and then deleted instead, which can still trigger that
+crash.) Studio's undo cannot bring a removal back; that copy, or Git, can. A
+removal of more than 64 MB is refused, and so is a removal of anything that
+holds instances only Studio has, since no file, and so no backup, would
+keep them.
+
+### Renames and moves
+
+The instance's files are renamed, keeping their suffix: `Main.server.luau`
+and `Main.meta.json` become `Boot.server.luau` and `Boot.meta.json`, and a
+folder-backed instance's folder is renamed. A move puts them in the new
+parent's project folder. Rojo makes the renamed instance afresh, so its
+`instanceRef` no longer resolves; a `set_properties` result says so with
+`instanceRefReplaced`.
+
+### Checks before and after
+
+Before a removal, rename or move, every script under the instance is compared
+with its file. If Studio holds different text for one (an unsaved edit
+included), the change is refused with `rojo_conflict` and nothing changes,
+since Rojo would make the instance again from the file without it. Each of
+those script files is then locked with the same write lease script edits
+take (see [Conflicts](#conflicts-and-how-to-resolve-them)) and compared again
+before any file moves, so another Roqer writer's save that lands in between
+is refused with `rojo_conflict` rather than moved or removed unseen; a file
+another writer is saving right now refuses the change with
+`rojo_write_failed`, naming its lease folder.
+
+Once written, the files are read back through `rojo sourcemap`. If Rojo does
+not make exactly the planned result from them (for example, a
+`globIgnorePaths` pattern hides a new file), every change is undone and the
+call is refused. While `rojo serve` runs, it may already have carried the
+change, and then its undo, into Studio, which replaces those instances; such
+a refusal says so, sets `studioMayHaveChanged`, and does not claim nothing
+changed. Otherwise the result has:
+
+- `saved`: `files` (new files), `removed`, `renamed` (`{from, to}`) and
+  `backup`, all relative to the project folder except `backup`; `sync` is
+  `synced` once Studio shows every change, `pending` while it does not (a
+  `hint` says whether a Rojo server answers), or `diverged` when Studio holds
+  something else at those paths; `scripts` gives each new script's path and
+  the `revision` a read of it should show once Rojo has delivered it;
+- `undoable: false`: Rojo made the change, so Studio's undo cannot take it
+  back.
+
+Only Studio answering that an instance is not there counts as a removal
+delivered; a failed read leaves `sync` `pending`. While `sync` is
+`pending`, Studio does not have the change yet. Wait, or get
+Rojo serving and connected; do not make the change again.
+
+### What stays in Studio
+
+A call that touches nothing the project holds is applied in Studio exactly as
+before, without running Rojo at all: a new tree going somewhere the project
+has no folder (a service the project does not map, an instance written out in
+the project file with no `$path`, an instance that exists only in Studio, or
+a script saved as a single file), and any change to an instance the project
+does not hold. When that leaves something unsaved that you may expect saved
+(any new instance, an edit to a property of something the project owns, a
+change to an instance inside a model file, or a Studio-only instance moved
+into a project folder), the result adds `persistence: "studio_only"` and a
+`persistenceNote` saying why, such as `new instances under game.Workspace are
+not saved to the Rojo project: Workspace is not in the Rojo project`. If the project file cannot be read, a new tree
+without scripts and a property edit are applied in Studio with such a note,
+and anything else is refused.
+
+### Refusals
+
+The whole call is refused, with nothing changed, when:
+
+- it mixes changes saved to files with anything that stays in Studio. Send
+  them in separate calls;
+- a script, a Folder of scripts, or another container of scripts carries
+  more than a name, class and source: tags, attributes, other properties, a
+  position, rotation or scale, a cloned container (whose own properties a
+  folder cannot carry), a disabled script, a Script whose RunContext needs a
+  meta file, a LocalScript when `emitLegacyScripts` is false, or more script
+  source than one plan carries (2,000,000 characters in all);
+- a model could not be serialized, or the plan's models are larger than it
+  carries (8,000,000 base64 characters in all);
+- a name could not round-trip through a file name: characters a file name
+  cannot hold, a trailing dot or space, a Windows-reserved name, `init`, or
+  an ending Rojo reads as a file type, such as `.server` or `.json`;
+- the name is already taken, in Studio, in the project, or by any file or
+  folder Rojo would read under that name, ignoring case (a stale
+  `Name.meta.json` included). Two new siblings whose names differ only in
+  case are refused too;
+- a rename or move also sets other properties, or would drop instances only
+  Studio holds under it (Rojo remakes the instance from its files), or the
+  new parent has no project folder, or the new name is already taken in
+  Studio or the project;
+- a move would take a Script or LocalScript into a part of the project
+  governed by a different `emitLegacyScripts` setting, which would change its
+  class or RunContext;
+- a batch removes an instance the project owns and makes a new one by the
+  same name in its place (as a scatter's `replace` does): remove it in one
+  call, then build the new one in another;
+- a file Rojo reads as another instance shares the instance's name (such as
+  `Main.txt` beside `Main.server.luau`), so which files are meant is
+  ambiguous; a file Rojo does not read at all is left where it is;
+- the instance is written out in the project file itself (change it there),
+  or is a nested project itself (a `*.project.json` file, or a folder holding
+  `default.project.json`, named by the project's own `name`): rename or
+  remove those yourself;
+- the folder resolves outside the project folder (for example a `$path` of
+  `../shared/src`, or a link out of it), as for edits to existing scripts;
+- a path is ambiguous: another instance on it in Studio shares its name with
+  a sibling, or Rojo's project makes two instances by one name on it, or
+  Studio and the project disagree on the instance's class;
+- the project file governing the folder sets `syncRules`, or one on the way
+  to it does, so the file name Rojo expects cannot be known;
+- a new or renamed file would be Git-ignored, or sits under `_Index`
+  (`rojo_generated`); removing or renaming such a file is refused the same
+  way;
+- an instance holds more than 200 scripts to compare, or the change would
+  wait on more than 50 scripts and instances in Studio at once.
+
+If a change has to be undone and a file or folder cannot be put back (for
+example someone saved into a new folder meanwhile, or a program holds a file
+open), the error names it in `leftovers`, relative to the project folder, and
+says to fix it by hand.
+
+In the Roqer app, a `build_instances` call that removes anything (or a
+scatter that replaces its previous group) asks before it runs, in every mode
+but Full auto, whenever the app holds any Rojo link, since it may delete
+project files. A place linked before it was published, or a call with no
+place of its own, counts as linked too.
+
 ## Conflicts and how to resolve them
+
+Roqer serializes writes to the same real source file across participating
+processes that share a home folder (`HOME`/`USERPROFILE`), including paths through symlinks or junctions. After the first
+writer saves, a second writer with the same old revision is refused. Writes
+to different files can proceed independently. The shared leases live outside
+the project in `~/.roqer/rojo-write-locks/v1`, keyed by the actual file path;
+they do not depend on the bridge's port or managed-instance registry.
+A busy lease returns `rojo_write_failed` immediately, naming the lease
+folder, without a queued retry that could outlive a caller's timeout.
+Read/retry after the current writer finishes. A live owner refreshes the
+lease every 5 seconds. A lease older than 30 seconds is reclaimable only
+when its recorded OS process creation identity has exited or its PID now
+belongs to a different process, or when the bridge reclaiming it is the one
+that left it behind after its request ended. An alive but paused owner
+retains exclusivity. A stale lease folder with no owner file at all is what
+a failed removal leaves (owner files are written under the same guard that
+removal holds), so it is reclaimed too. Damaged, foreign-host, or
+unverifiable owner metadata refuses takeover.
+
+OS process identity observation can also be unavailable. Windows uses a
+hidden, system PowerShell query with a 2-second limit, which fails every
+time where PowerShell is blocked by policy (AppLocker, WDAC) or runs in
+Constrained Language Mode. Saving does not depend on it: a bridge that
+cannot observe its own process still saves, under an owner record marked
+`unverified`, and tries the observation again after a minute. Another writer
+takes over a stale `unverified` lease only once that PID is gone; while it
+is running it cannot be told from a reuse of the PID, so takeover is
+refused. A successful observation of the bridge's own creation identity is
+cached for that process.
+
+The final identity/lease checks and rename run synchronously, without an
+event-loop yield or queued filesystem rename between them. Publication and
+removal of lease metadata are serialized by a separate short `.guard`
+directory. An interrupted guard is never automatically reclaimed. If a
+damaged lease or guard remains, stop all bridge processes that can write the
+project, confirm its recorded owner is stopped (coordinate with the recorded
+host for a foreign-host record), then remove only that file's identified
+lease/guard directory under `~/.roqer/rojo-write-locks/v1`. Keep the source
+file. Do not remove these directories while a writer is alive.
+
+Ordinary owner-publication I/O failures clean up only the just-created,
+identity-verified metadata file and empty directory. When releasing a lease
+fails (a heartbeat failure that makes the lock library forget this request,
+another writer's `.guard` held for a moment, or a delete Windows refuses
+briefly), Roqer retries the removal of its unchanged owned namespace for
+about 1.5 seconds, then in the background for about a minute, so a live
+bridge can retry. If I/O access is still broken
+or cleanup ownership cannot be established, the refusal or saved-write
+warning says recovery remains necessary.
+
+The file and its parent directories are checked against their identities
+from ownership resolution after the lease is taken and before replacement.
+Replacing a file with equal text still requires a fresh read. If a parent
+directory is replaced, Roqer also refuses to clean temporary files through
+that new path; a temporary file in the moved original directory may remain.
+
+External editors do not participate in this lease. Roqer checks their saves
+before writing and again before renaming its temporary file, but an external
+save after that final check can still race the rename. Older bridge versions
+also do not take the lease; all concurrent Roqer writers must use a version
+with this protection.
 
 An edit to a file-backed script can fail with nothing changed on either side:
 
@@ -236,9 +499,34 @@ after you linked still shows up):
 - `execute_luau` and other runtime eval can still change a script's source in
   Studio directly. The agent is told not to use them to get around a `rojo_*`
   refusal, but nothing stops arbitrary Luau from doing it anyway.
-- New scripts, deletions, renames, and models are not persisted. A script
-  your project doesn't know about is `studio_only`, and stays that way until
-  you add it to the project yourself.
+- Only `build_instances` and `set_properties` change what the project holds
+  (see [New instances, removals, renames and moves](#new-instances-removals-renames-and-moves)).
+  `import_rbxm`, `insert_asset`, `generate_model`, `animation`, and
+  `execute_luau` still make their instances in Studio only, and a script your
+  project doesn't know about is `studio_only` until you add it to the project.
+- A change to an instance inside a model file (`.rbxm`, `.rbxmx`,
+  `.model.json`), or to a property of anything the project owns, is made in
+  Studio only, and Rojo can put the file's version back when it next syncs
+  that file.
+- A new model is saved as a binary `.rbxm`, which `git diff` cannot show line
+  by line, and the scripts inside one are not files you can edit. A model
+  holding scripts is saved as a folder instead, so its scripts stay files;
+  anything set on the container itself is then refused, since a folder cannot
+  carry it.
+- Renames and moves are delivered by Rojo, which replaces the instance in
+  Studio, so its `instanceRef` stops resolving. A removal or rename Rojo has
+  not delivered yet cannot be confirmed by a later read. The
+  Roqer app asks before any `build_instances` removal on a linked place.
+- The desktop app knows of links it made (the Rojo pill, or the agent's
+  `link_rojo_project`). While it holds none, a link made another way, such as
+  `manage_instance link_project` called directly, does not make a removal ask
+  first in Auto approve; the removal still deletes files. While it holds any,
+  removals on every place ask first.
+- A change Rojo has to undo after a running `rojo serve` already delivered it
+  leaves Studio with fresh instances in place of the old ones.
+- A batch cannot remove something the project owns and make a new one by the
+  same name in one call, so a scatter's `replace` of a saved group needs the
+  old group removed first.
 - Links live in the MCP server's memory, so they are lost when that server
   process restarts; relink afterward (or pass `--rojo-project`, below, so a
   bare MCP client relinks itself). The desktop app is the exception: for a
@@ -291,7 +579,7 @@ after you linked still shows up):
 
 Everything above is the same `manage_instance`, `get_script_source`,
 `set_script_source`, `edit_script_lines`, `edit_script_batch`,
-`insert_script_lines`, `delete_script_lines`, and
+`insert_script_lines`, `delete_script_lines`, `build_instances`, and
 `find_and_replace_in_scripts` calls Roqer's own agent uses, so linking and
 editing work the same way from Claude Code, Codex, Cursor, or any other MCP
 client connected to [the Studio MCP server](mcp-server.md). The read-only

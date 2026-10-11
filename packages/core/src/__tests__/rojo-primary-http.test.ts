@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
+import osModule from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
@@ -15,6 +16,7 @@ import type { RojoDelegateRequest } from '../rojo/primary-service.js';
 import { sourceRevision } from '../rojo/source-revision.js';
 import * as sourcemap from '../rojo/sourcemap.js';
 import * as rojoServer from '../rojo/rojo-server.js';
+import { stubWindowsProcessObserver } from './rojo-process-observer-fixture.js';
 
 // Real loopback HTTP, ProxyBridgeService, primary Tools, queue admission, and
 // temporary project files. Studio responses are simulated at the delivery
@@ -150,6 +152,8 @@ function packet(epoch: string, toolName = 'get_script_source', args: Record<stri
 
 beforeEach(() => {
   directory = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'roqer primary http ')));
+  jest.spyOn(osModule, 'homedir').mockReturnValue(path.join(directory, 'private-home'));
+  stubWindowsProcessObserver();
   previousGitEnvironment = new Map(Object.keys(process.env).filter(name => name.toUpperCase().startsWith('GIT_')).map(name => [name, process.env[name]]));
   for (const name of previousGitEnvironment.keys()) delete process.env[name];
   const configuration = path.join(directory, 'gitconfig-empty');
@@ -184,6 +188,22 @@ afterEach(async () => {
 });
 
 describe('primary source ownership through actual loopback HTTP (Studio and Rojo CLI fixtures)', () => {
+  test.each(['build_instances', 'set_properties'] as const)('upstream %s uses the proxy client project context', async (tool) => {
+    const primary = await host();
+    const fixture = project(`Structural-${tool}`);
+    const client = await proxy(primary);
+    expect(bodyOf(await client.tools.manageInstance({ action: 'link_project', instance_id: INSTANCE, project: fixture.projectFile })))
+      .toMatchObject({ linked: true });
+    expect(primary.tools.rojo.hasLinks()).toBe(false);
+    primary.calls.length = 0;
+    if (tool === 'build_instances') await client.tools.buildInstances('game.ServerScriptService', [{ op: 'remove', target: 'Main' }], INSTANCE);
+    else await client.tools.setProperties(SCRIPT, { Name: 'Renamed' }, INSTANCE);
+    expect(primary.calls).toHaveLength(1);
+    expect(primary.calls[0]).toMatchObject({ endpoint: tool === 'build_instances' ? '/api/build-instances' : '/api/set-properties', data: { planOnly: true } });
+    // The simulated peer deliberately declines this plan. No disk or Studio mutation follows it.
+    expect(fs.readFileSync(fixture.file, 'utf8')).toBe('local x = 1\n');
+  });
+
   test('two proxy links/unlinks are isolated, while primary local Tools and HTTP share their own scope', async () => {
     const primary = await host();
     const aProject = project('A');
@@ -191,7 +211,8 @@ describe('primary source ownership through actual loopback HTTP (Studio and Rojo
     const localProject = project('Local');
     const a = await proxy(primary);
     const b = await proxy(primary);
-    expect(bodyOf(await a.tools.manageInstance({ action: 'link_project', instance_id: INSTANCE, project: path.relative(process.cwd(), aProject.projectFile) })).linked).toBe(true);
+    const linkedA = bodyOf(await a.tools.manageInstance({ action: 'link_project', instance_id: INSTANCE, project: path.relative(process.cwd(), aProject.projectFile) }));
+    expect(linkedA).toMatchObject({ linked: true });
     expect(bodyOf(await b.tools.manageInstance({ action: 'link_project', instance_id: INSTANCE, project: bProject.projectFile })).linked).toBe(true);
     expect(a.state.checkpoint.bindings[0].projectFile).toBe(aProject.projectFile);
     expect(b.state.checkpoint.bindings[0].projectFile).toBe(bProject.projectFile);
