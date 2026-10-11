@@ -138,6 +138,35 @@ test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests d
   assert.match(entrypoint, /with \*\*CLASSIC STUDS\*\*: `references\/themes\/recovered\/studs-1\.md`/);
 });
 
+/**
+ * A full HUD-and-panels benchmark drew its HUD deals at half the reference
+ * size (sized from screen width), and its HUD tiles, day tiles and collection
+ * slots with far smaller art than either reference game, because the guidance
+ * kept all text off art. Text over art is audit-clean when the art is the
+ * label's parent or its box covers the whole face; both were checked live.
+ */
+test("MODERN STUDS draws art at reference size with labels over it", async () => {
+  const kit = await read("references/themes/modern-studs/part-2.md");
+  assert.match(kit, /\*\*Text over art\.\*\*/);
+  assert.match(kit, /Icon: Fit, square, `Size = UDim2\.fromScale\(0\.8, 0\.8\)` of the face/);
+  assert.match(kit, /Label: a CHILD of the icon/);
+  assert.doesNotMatch(kit, /keeps the label clear of the icon's box/);
+  assert.match(kit, /a square holder 0\.17 of screen height/);
+  assert.match(kit, /is a CHILD of the art image, wholly inside its top corner/);
+  // Gold-tinted and white rays both vanished on gold cards in Studio; orange ones showed.
+  assert.match(kit, /`ImageColor3 = PALETTE\.orange\.bottom`/);
+  assert.doesNotMatch(kit, /PALETTE\.gold\.bottom/);
+
+  const hud = await read("references/selected/modern-studs/hud-zone-system.md");
+  assert.match(hud, /sized from screen height \(art holder 0\.17 of it/);
+  assert.doesNotMatch(hud, /each ~8\.5% of screen width/);
+  const daily = await read("references/selected/modern-studs/progression-hub.md");
+  assert.match(daily, /Each day tile is filled by its reward art/);
+  assert.doesNotMatch(daily, /in separate bands/);
+  const slots = await read("references/selected/modern-studs/grid-inventory.md");
+  assert.match(slots, /an art box covering the whole face/);
+});
+
 test("the recovered STUDS shop keeps the composition anchors that prevent viewport stretching", async () => {
   const source = await read("references/selected/studs/shop-grid.md");
   assert.match(source, /Panel: 45% screen width, centered/);

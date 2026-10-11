@@ -212,20 +212,26 @@ The title, icon, and close are CHILDREN of the panel body: the UI audit treats a
 
 All of these are `makeSurface` blocks. Text, art, and buttons are children of a block's `Face`, so they render above it and the audit reads them as on it.
 
+**Text over art.** Both reference games draw art big and put labels over it. A label may sit on a picture in two ways, and the UI audit accepts both:
+- the label is a CHILD of the art image (a HUD tile's name over its icon's foot, a tag on HUD-offer art); or
+- the art's box covers the whole face it sits on: `Size = UDim2.fromScale(1, 1)`, `ScaleType.Fit`, and no aspect constraint on the box, its sunburst, or its holder. The picture stays square while its box reaches every label (day tiles, collection slots).
+
+A label that crosses the edge of a sibling art or sunburst box is the collision the audit reports. Shop cards keep their separate bands (Card).
+
 - **Close**: always the `tile` red block with a white "X" (`makeText`, stroke 3), square through a height-dominant `UIAspectRatioConstraint`. Inside the band (Dark) or straddling the top-right corner (Light). Never a bare "X" label, never a different colour.
 - **Price button**: `button` green block, ONE label `ROBUX .. " " .. price` at ~0.74 of the face's height (or the coin icon beside an amount for coin prices: icon left, amount right, one centred `UIListLayout` row). At most ~30% of its card's height, at least 44 px tall.
 - **Gift button**: `tile` purple square beside a price button, the same height, with the Gift icon at 70% of its size. Optional; when present it sits to the right of the price button with a 6 px gap.
 - **Action button**: `button` block, green for the affirmative action, purple for skip/boost, red for destructive, grey for cancel. Label only, or icon left of the label as one centred group.
 - **Card** (product, reward, collection entry): `card` block. Bands top to bottom, as shares of card height:
   - name 0.04-0.18: white, extruded, stroke 2.5, centred (left-aligned at 0.6 width when the card has a tag);
-  - art 0.18-0.75: a transparent holder centred at (0.5, 0.465), `Size = UDim2.fromScale(1, 0.57)` with a height-dominant square constraint. In it, the art `ImageLabel` (Fit, `Size = UDim2.fromScale(0.9, 0.9)`, `ZIndex` 2) on the sunburst (`ScaleType.Crop`, `Size = UDim2.fromScale(1.7, 1)`, centred, ImageTransparency 0.15, `ZIndex` 1). The crop spreads the rays across the card's width while keeping them inside the art band, clear of the name and the price. On `yellow` and `gold` faces tint the sunburst with `ImageColor3 = PALETTE.gold.bottom` so the rays still show;
+  - art 0.18-0.75: a transparent holder centred at (0.5, 0.465), `Size = UDim2.fromScale(1, 0.57)` with a height-dominant square constraint. In it, the art `ImageLabel` (Fit, `Size = UDim2.fromScale(0.9, 0.9)`, `ZIndex` 2) on the sunburst (`ScaleType.Crop`, `Size = UDim2.fromScale(1.7, 1)`, centred, ImageTransparency 0.15, `ZIndex` 1). The crop spreads the rays across the card's width while keeping them inside the art band, clear of the name and the price. On `yellow` and `gold` faces tint the sunburst with `ImageColor3 = PALETTE.orange.bottom`: measured on a benchmark shop, white and gold-tinted rays both vanish on those faces, orange ones show;
   - price/action row 0.77-0.96: price button `Size = UDim2.fromScale(0.74, 0.19)`, anchored top-centre at (0.5, 0.77), or price + gift.
   Bands never overlap; with no art, the card shrinks rather than leaving an empty band. Art that floats (Presentation) is sized at 0.8 instead of 0.9, so its travel stays inside the band.
 - **Tag** ("NEW!", "HOT", "BEST", "-75%", "LIMITED"): bare coloured text, no block behind it, as both reference games do. One `makeText` label, `extrude = true`, stroke 3, right-aligned inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17). At most one per card.
   - Colour by meaning: red `Color3.fromRGB(255, 60, 60)` for NEW!, HOT, OP! and discounts; the gold gradient for BEST, LIMITED and MOST POPULAR.
   - The thick black stroke carries it on any face, but never put a tag on a face of its own colour: on a red or pink card use the gold tag, on a gold or yellow card use the red one.
   - Inside a scrolling list a tag stays upright. A HUD offer outside any scrolling list may tilt its tag to `Rotation = -10`, as one reference game does.
-- **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. It uses the same dense stud face as every other block: the sparse texture tiled across a banner came out as huge, patchy studs in a benchmark shop. A featured banner may carry an extruded gold display number. A banner always sells a real product.
+- **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. A square holder at the left (~0.85 of row height) filled by a `Fit` sunburst, with the art at most 0.7 of the holder so some rays show around it (at 0.78 the art hid them completely), then name + one description line in the middle, price button bottom-right, optional tag top-right. It uses the same dense stud face as every other block: the sparse texture tiled across a banner came out as huge, patchy studs in a benchmark shop. A featured banner may carry an extruded gold display number. A banner always sells a real product.
 - **Section title**: a full-width Frame 40-48 px tall in the section's colour, faded at both ends, with an extruded title centred on it:
 
   ```lua
@@ -252,11 +258,17 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - size: rail width 0.2 of panel width; tabs 0.11 of rail height, ~2% gaps;
   - state: EXACTLY ONE tab in its category colour (the active one, matching the visible content), every other tab `grey`.
   Use the rail only when the panel is at most 0.55 screen width, so it stays on screen.
-- **HUD tile**: a `tile` block, roughly square (aspect 0.97). Icon (Fit, square) centred at y 0.38 at 0.62 of the tile's height; label at y 0.84, 0.24 tall, stroke 2.5; the bands never overlap. The references draw the icon larger (~0.77 of the tile) with the label over its foot; this kit keeps the label clear of the icon's box, because text partly over an image is what the UI audit reports.
+- **HUD tile**: a `tile` block, roughly square (aspect 0.97), drawn as the references draw it: a big icon with its label over the icon's foot (modern-2: icon 0.775 of the tile, label 0.26 tall at y 0.77).
+  - Icon: Fit, square, `Size = UDim2.fromScale(0.8, 0.8)` of the face at (0.5, 0.45).
+  - Label: a CHILD of the icon (Text over art) at (0.5, 0.92), `Size = UDim2.fromScale(1.2, 0.3)` of the icon, stroke 2.5, `ZIndex` 3. Checked live: audit clean.
   - Optional badge, straddling the top-right corner as one reference game's alert does: a red `chip` parented to the tile's FACE, `AnchorPoint` (0.5, 0.5), `ZIndex = 4` so it draws above the icon and label. "NEW!": `Size = UDim2.fromScale(0.46, 0.18)` at (0.84, 0). "!": `Size = UDim2.fromScale(0.28, 0.28)` at (0.94, 0.08). Its text is `makeText` at 0.82 x 0.8, stroke 2.
   - Parent it to the face, never the base. On the base, the badge's text is partly on the face and partly off it, which the UI audit reports; a benchmark HUD then pushed its badges into the tile and shrank the icons to make room. Never shrink or move the icon for a badge.
-  - These sizes keep the badge's text above and right of the icon's box, and the part that hangs outside the tile stays inside a ~1% grid gap (checked live: audit clean, with a badge on a tile in either column). Do not enlarge it or move it further out, or it lands on the next tile.
-- **HUD offer** (the right-column deals both reference games show): NOT a block. Art (Fit, square) on a `ScaleType.Fit` sunburst ~1.3x its size, the offer's name as a stroked label under the art, and the price as green stroked text with the Robux glyph (`ROBUX .. " 99"`, `Color3.fromRGB(0, 255, 8)`, stroke 2.5) above or below the name. The whole offer is one transparent `ImageButton` (no image, `BackgroundTransparency = 1`) holding these, stacked in the right zone. Keep the text in its own band, clear of both the art's and the sunburst's boxes.
+  - These sizes keep the badge's text clear of the icon's box, and the part that hangs outside the tile stays inside a ~1% grid gap (checked live with the 0.8 icon: audit clean, with a badge on a tile in either column). Do not enlarge it or move it further out, or it lands on the next tile.
+- **HUD offer** (the right-column deals both reference games show): NOT a block. The whole offer is one transparent `ImageButton` (no image, `BackgroundTransparency = 1`) holding, top to bottom:
+  - a square holder 0.17 of screen height (~184 px at 1080p), filled by a `ScaleType.Fit` sunburst, with the art (Fit, square) at 0.76 of it, or 0.66 when it floats;
+  - the offer's name as a stroked label 0.035 of screen height, under the holder;
+  - the price under the name, 0.03 of screen height: green stroked text with the Robux glyph (`ROBUX .. " 99"`, `Color3.fromRGB(0, 255, 8)`, stroke 2.5).
+  Size it from screen HEIGHT. Both references draw this art big (155 px in modern-2, 177 px in modern-1, at 1080p); a benchmark that sized the offer to 8.5% of screen width drew the art at about half that. Keep the name and price clear of the holder's box. A tag on the offer ("Cheap!", `Rotation = -10`) is a CHILD of the art image, wholly inside its top corner, so it never crosses the sunburst's edge. Checked live: audit clean.
 - **Currency readout**: no plate. A transparent row: icon (Fit, square, the row's full height) then the value as a left-aligned label with stroke 3 and a display-number gradient (cash, gold, gem). Each currency has its own icon and gradient.
 - **Value chip** (multipliers, "x1.5 Money"): a `chip` block with one centred label. A before/after pair is two chips with a bare stroked ">" between them, never an arrow drawn from Frames.
 - **Progress bar**: ONE `chip` block whose face gradient carries the fill as a hard colour stop, with its count label on the face. A label centred over a separate fill frame is half on and half off it, which the UI audit reports.
@@ -359,7 +371,8 @@ end
 - Every badge is parented to its block's face with `ZIndex` 4, its text clear of the icon; icons keep their full size.
 - The panel opened with blur and pop; the screenshot shows the resting state.
 - Asset IDs are only the ones in part 1, `resolve_icon` results, or verified project art.
-- No overlap, no text crossing a sibling's edge, no zero-size element, all content hardcoded.
+- No overlap, no text crossing a sibling's edge, no zero-size element, all content hardcoded. Text over art only as the art's child or on a full-face art box.
+- HUD tile icons at 0.8 with the label over their foot; HUD-offer art sized from screen height; day tiles and collection slots filled by their art.
 
 ## Layout bodies
 
