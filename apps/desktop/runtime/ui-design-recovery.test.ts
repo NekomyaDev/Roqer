@@ -110,6 +110,8 @@ test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests d
   assert.match(shop, /A shop has NO tabs/);
   assert.doesNotMatch(shop, /tab rail on the panel's RIGHT edge/);
 
+  assert.match(kit, /VerticalScrollBarInset = Enum\.ScrollBarInset\.Always/);
+
   const entrypoint = await read("SKILL.md");
   assert.match(entrypoint, /\*\*MODERN STUDS\*\*, the stud theme: .* used for every stud, studded, or blocky request/);
   assert.match(entrypoint, /with \*\*CLASSIC STUDS\*\*: `references\/themes\/recovered\/studs-1\.md`/);
@@ -166,6 +168,14 @@ test("themed screens get the polish layer's motion but still wire no game behavi
     assert.match(source, /TweenService is allowed only for the presentation motion in Roqer's polish layer/, part);
     assert.match(source, /no MarketplaceService or product lookups, no RemoteEvents or RemoteFunctions/, part);
   }
+
+  // Measured in Studio: a pulsing tag's text jumped between whole font sizes
+  // while its body scaled smoothly, and a 7 px float moved in visible
+  // one-pixel hops. Ambient motion pulses colour, not the size of text.
+  assert.match(polish, /Never continuously scale anything that contains text/);
+  assert.match(polish, /pulse its colour, not its size/);
+  assert.match(polish, /move at least 10 px each way/);
+  assert.match(polish, /Enum\.EasingStyle\.Sine, Enum\.EasingDirection\.InOut, -1, true/);
 
   // A tilted tag on a card scrolled out of view drew below the panel: Roblox
   // does not clip rotated descendants of a ScrollingFrame.

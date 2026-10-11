@@ -32,6 +32,7 @@ local function makeContent(panel, scrolls, barColor)
 		content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		content.CanvasSize = UDim2.new()
 		content.ScrollingDirection = Enum.ScrollingDirection.Y
+		content.VerticalScrollBarInset = Enum.ScrollBarInset.Always -- rows stop short of the bar instead of running under it
 		content.ScrollBarThickness = 6
 		content.ScrollBarImageColor3 = barColor
 	end
@@ -212,7 +213,7 @@ The title, icon, and close are CHILDREN of the panel body: the UI audit treats a
 All of these are `makeSurface` blocks. Text, art, and buttons are children of a block's `Face`, so they render above it and the audit reads them as on it.
 
 - **Close**: always the `tile` red block with a white "X" (`makeText`, stroke 3), square through a height-dominant `UIAspectRatioConstraint`. Inside the band (Dark) or straddling the top-right corner (Light). Never a bare "X" label, never a different colour.
-- **Price button**: `button` green block, ONE label `ROBUX .. " " .. price` (or the coin icon beside an amount for coin prices: icon left, amount right, one centred `UIListLayout` row). At most ~30% of its card's height, at least 44 px tall.
+- **Price button**: `button` green block, ONE label `ROBUX .. " " .. price` at ~0.74 of the face's height (or the coin icon beside an amount for coin prices: icon left, amount right, one centred `UIListLayout` row). At most ~30% of its card's height, at least 44 px tall.
 - **Gift button**: `tile` purple square beside a price button, the same height, with the Gift icon at 70% of its size. Optional; when present it sits to the right of the price button with a 6 px gap.
 - **Action button**: `button` block, green for the affirmative action, purple for skip/boost, red for destructive, grey for cancel. Label only, or icon left of the label as one centred group.
 - **Card** (product, reward, collection entry): `card` block. Bands top to bottom, as shares of card height:
@@ -307,6 +308,23 @@ end
 - HUD, sidebar, clicker, and toast layouts never blur: the world stays sharp behind them.
 - Hiding the HUD while a panel is open is allowed only when the user asks for it.
 - Hover and press follow the polish layer through a `UIScale` on the block's base (hover 1.06, press 0.94). Nothing tweens `Size` or `Position` of anything a layout places.
+- Ambient motion follows the polish layer's smooth-motion rules. With this kit:
+
+  ```lua
+  local function loop(seconds)
+  	return TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+  end
+  -- Attention on a block with text (a tag, a badge, a button): dim and restore its face; the text never resizes.
+  TweenService:Create(tagFace, loop(0.6), { BackgroundColor3 = Color3.fromRGB(190, 190, 190) }):Play()
+  -- A HUD badge outside any ScrollingFrame may wobble instead: rotation turns its text with it.
+  badge.Rotation = -8
+  TweenService:Create(badge, loop(0.45), { Rotation = 8 }):Play()
+  -- Float an image (never text) at least 10 px each way. Size the art at 0.8 of its band so the travel stays inside it.
+  local rest = art.Position
+  art.Position = rest + UDim2.fromOffset(0, 10)
+  TweenService:Create(art, loop(1.1), { Position = rest - UDim2.fromOffset(0, 10) }):Play()
+  ```
+  Never tween a `UIScale` on a block, tag, or badge that holds text for longer than a hover or the open pop.
 
 ## Engine facts
 

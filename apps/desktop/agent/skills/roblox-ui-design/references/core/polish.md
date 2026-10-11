@@ -11,11 +11,18 @@ Presentation only, with `TweenService`:
 - **Open:** a `UIScale` on the panel tweens 0.85 → 1 (`Back`, `Out`, ~0.25 s) each time the screen is shown.
 - **Buttons:** hover 1.06, press 0.94, release back to 1, through a `UIScale` child (~0.12 s). `AutoButtonColor = false`.
 - **Cards:** hover 1.03. On first show and on every tab switch, cards pop in one after another (≤0.03 s apart, the whole group ≤0.4 s).
-- **Ambient, two or three at most:** featured art floats gently (`Sine`, `InOut`, reversing, repeating), an alert dot pulses, a shine sweeps across the featured buy button (`UIGradient.Offset`).
+- **Ambient, two or three at most:** featured art floats, an alert badge or discount tag draws attention, a shine sweeps across the featured buy button (`UIGradient.Offset`). Each is ONE tween built with `TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)`, never a loop that re-creates tweens.
+
+Ambient motion that looks smooth (measured in Studio on a benchmark shop):
+
+- **Never continuously scale anything that contains text.** Roblox draws text only at whole font sizes, so while a pulsing tag's body shrank smoothly from 38.1 to 35.3 px its text jumped 24 → 23 → 22 px at separate moments, and a fixed `TextSize` jumped the same way. That is the "text does not pulse with its body" effect. The short hover, press, and open pops are fine; endless pulses are not.
+- **Attention on anything with text** (a "-75%" tag, a NEW! badge, a button): pulse its colour, not its size. Tween the block's background colour between its resting colour and a dimmer one (`Color3.fromRGB(190, 190, 190)` on a white-backed gradient face) over ~0.6 s; the text never changes size. Outside any `ScrollingFrame`, a badge may instead wobble with `Rotation` ±8° over ~0.45 s: rotation turns the text with its block exactly.
+- **Size pulses are for image-only elements** (an icon badge with no text, a glow behind something).
+- **Float images only, never text, and move at least 10 px each way** (an `Offset` of 20 px end to end) over 0.9-1.2 s. The renderer draws whole pixels: a chest floating 7 px over 1.4 s showed as a few uneven one-pixel hops. Make room for the travel inside the art's band so the art never crosses the name or price.
 
 Rules:
 
-- Tween `UIScale.Scale`, transparency, gradient offset, or the position of a decorative child. Never tween the `Size` or `Position` of anything a `UIListLayout`, `UIGridLayout`, or the selected body places.
+- Tween `UIScale.Scale` (brief pops, or image-only pulses), transparency, a background colour (attention pulses), gradient offset, or the position of a decorative image. Never tween the `Size` or `Position` of anything a `UIListLayout`, `UIGridLayout`, or the selected body places.
 - Nothing inside a `ScrollingFrame` is rotated, tilted, or rocked. Roblox does not clip rotated descendants, so a tilted element scrolled out of view draws outside the panel. Rotation is only for elements that never scroll. Do not clip with a `CanvasGroup` instead: it renders to a texture that blurs and costs memory.
 - The resting state is the canonical state: a screenshot taken after the open animation matches the layout exactly.
 - No `RunService` per-frame work. A cosmetic countdown is one `task` loop that ends when the screen leaves the DataModel (`while gui.Parent do ... task.wait(1) end`).
