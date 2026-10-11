@@ -149,6 +149,28 @@ describe('auditUI overlap and scroll reach', () => {
     expect(result.issues[0].evidence).toMatchObject({ over: 'game.Shop.Card.Buy' });
   });
 
+  test('rows scrolled below the screen inside an on-screen scroll window are not reported as outside it', () => {
+    // A benchmark shop: the scroll window ends at the bottom of a 400px screen
+    // and its gamepass rows sit further down the canvas. Each was reported as
+    // invisible, 34 warnings in all, and the run dismissed the audit.
+    const scroller = element({
+      ref: 'scroll', path: 'game.Shop.Scroll', className: 'ScrollingFrame', clipsDescendants: true,
+      absolutePosition: { x: 0, y: 200 }, absoluteSize: { x: 200, y: 180 },
+      absoluteWindowSize: { x: 200, y: 180 }, absoluteCanvasSize: { x: 200, y: 600 }, canvasPosition: { x: 0, y: 0 },
+    });
+    const row = element({
+      ref: 'row', path: 'game.Shop.Scroll.Row', parentRef: 'scroll', absolutePosition: { x: 0, y: 500 }, absoluteSize: { x: 200, y: 80 },
+    });
+    expect(codes(viewport([scroller, row]))).toEqual([]);
+    // A scroll window that is itself off screen still reports, and so does its content.
+    const offScreen = element({ ...scroller, absolutePosition: { x: 0, y: 450 } });
+    const lostRow = element({ ...row, absolutePosition: { x: 0, y: 700 } });
+    expect(codes(viewport([offScreen, lostRow])).sort()).toEqual(['element_outside_viewport:row', 'element_outside_viewport:scroll']);
+    // Off screen and past the canvas is the canvas's defect, reported as such.
+    const pastCanvas = element({ ...row, absolutePosition: { x: 0, y: 820 } });
+    expect(codes(viewport([scroller, pastCanvas]))).toEqual(['content_beyond_scroll:row', 'element_outside_viewport:row']);
+  });
+
   test('content past the end of its scroll canvas is reported once, at its outermost piece', () => {
     const scroller = element({
       ref: 'scroll', path: 'game.Shop.Scroll', className: 'ScrollingFrame', clipsDescendants: true,

@@ -260,11 +260,30 @@ function beyondScrollIssues(tree: UITree): UIAuditIssue[] {
   return issues;
 }
 
+/**
+ * Whether an off-screen element lies inside the canvas of an on-screen
+ * ScrollingFrame, so scrolling brings it into view. A shop's lower rows sit
+ * below the screen as well as below the scroll window; reporting each of them
+ * as invisible taught a run to wave the whole audit away. Content past the
+ * canvas stays content_beyond_scroll's to report.
+ */
+function reachableByScrolling(tree: UITree, element: NormalizedUIElement): boolean {
+  const scroller = tree.nearestScroller(element);
+  if (!element.rect || !scroller?.rect || !scroller.absoluteCanvasSize || !scroller.insideViewport) return false;
+  const left = scroller.rect.x - (scroller.canvasPosition?.x ?? 0);
+  const top = scroller.rect.y - (scroller.canvasPosition?.y ?? 0);
+  return element.rect.x >= left - EDGE_SLACK
+    && element.rect.y >= top - EDGE_SLACK
+    && element.rect.x + element.rect.width <= left + scroller.absoluteCanvasSize.x + EDGE_SLACK
+    && element.rect.y + element.rect.height <= top + scroller.absoluteCanvasSize.y + EDGE_SLACK;
+}
+
 /** Reports only explicit, high-confidence semantic UI defects. */
 export function auditUI(normalized: NormalizedUIInspection): UIAuditResult {
   if (!normalized.success) {
     return { success: false, error: normalized.error, issues: [], summary: { total: 0, errors: 0, warnings: 0 } };
   }
+  const tree = new UITree(normalized.elements);
   const issues: UIAuditIssue[] = [];
   for (const element of normalized.elements) {
     if (element.hasInvalidRenderedGeometry) {
@@ -285,14 +304,14 @@ export function auditUI(normalized: NormalizedUIInspection): UIAuditResult {
     if (interactiveCandidate(element) && element.effectiveVisible && element.rect && (element.rect.width === 0 || element.rect.height === 0)) {
       issues.push(issue(element, 'warning', 'zero_size_interactive', 'Interactive control has zero rendered width or height.', { rect: element.rect }));
     }
-    if (element.effectiveVisible && element.rect && element.rect.width > 0 && element.rect.height > 0 && !element.insideViewport) {
+    if (element.effectiveVisible && element.rect && element.rect.width > 0 && element.rect.height > 0 && !element.insideViewport
+      && !reachableByScrolling(tree, element)) {
       issues.push(issue(element, 'warning', 'element_outside_viewport', 'Visible element does not intersect the viewport.', { rect: element.rect }));
     }
     if (interactiveCandidate(element) && element.effectiveVisible && element.rect && element.clippedByAncestor && element.visibleRect === null && !element.requiresScrolling) {
       issues.push(issue(element, 'warning', 'fully_clipped_interactive', 'Interactive control is fully clipped by an ancestor.', { rect: element.rect }));
     }
   }
-  const tree = new UITree(normalized.elements);
   issues.push(...overlapIssues(tree), ...beyondScrollIssues(tree));
   issues.sort(compareIssues);
   return {
