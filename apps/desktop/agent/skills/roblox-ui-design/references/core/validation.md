@@ -5,7 +5,7 @@
 After creating a new UI or making a meaningful visual edit:
 
 1. Start the smallest useful solo playtest when runtime rendering is needed.
-2. Run `inspect_ui {mode: 'audit'}` on the live client, rooted at the screen. It measures what a screenshot review misses and Roqer requires it: a run that changed interface is not verified until an audit after the last interface change comes back clean. Fix every finding, rerun the audit, and repeat:
+2. Run `inspect_ui {mode: 'audit'}` on the live client, rooted at the screen: the live copy is `game.Players.<player>.PlayerGui.<ScreenGui>` (a bare ScreenGui name or a StarterGui path does not resolve), or omit `root` to audit the whole PlayerGui. It measures what a screenshot review misses and Roqer requires it: a run that changed interface is not verified until an audit after the last interface change comes back clean. Fix every finding, rerun the audit, and repeat:
    - `text_obscured`: another element with a higher ZIndex covers the letters (a badge over a title). Move the badge off the text or give the text room, for example by narrowing its label or reserving a badge column.
    - `text_straddles_edge`: text sits partly on and partly off a painted element (a balance running under its "+" button, a "-20%" hanging off a price button). Lay them out side by side with a `UIListLayout` or padding, or put the text wholly inside the element.
    - `content_beyond_scroll`: content extends past its ScrollingFrame's canvas, so no scrolling reaches it. Use `AutomaticCanvasSize` on the scrolling axis, or size the canvas to the content, including padding.
