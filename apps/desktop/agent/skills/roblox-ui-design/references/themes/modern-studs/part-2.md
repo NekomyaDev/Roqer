@@ -220,7 +220,7 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - name 0.04-0.18: white, extruded, stroke 2.5, centred (left-aligned at 0.6 width when the card has a tag);
   - art 0.18-0.75: a transparent holder centred at (0.5, 0.465), `Size = UDim2.fromScale(1, 0.57)` with a height-dominant square constraint. In it, the art `ImageLabel` (Fit, `Size = UDim2.fromScale(0.9, 0.9)`, `ZIndex` 2) on the sunburst (`ScaleType.Crop`, `Size = UDim2.fromScale(1.7, 1)`, centred, ImageTransparency 0.15, `ZIndex` 1). The crop spreads the rays across the card's width while keeping them inside the art band, clear of the name and the price. On `yellow` and `gold` faces tint the sunburst with `ImageColor3 = PALETTE.gold.bottom` so the rays still show;
   - price/action row 0.77-0.96: price button `Size = UDim2.fromScale(0.74, 0.19)`, anchored top-centre at (0.5, 0.77), or price + gift.
-  Bands never overlap; with no art, the card shrinks rather than leaving an empty band.
+  Bands never overlap; with no art, the card shrinks rather than leaving an empty band. Art that floats (Presentation) is sized at 0.8 instead of 0.9, so its travel stays inside the band.
 - **Tag** ("NEW!", "BEST", "-50%", "LIMITED"): a `chip` block, red or gold, inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17), white text stroke 2. At most one per card.
 - **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. A featured banner may use the sparse stud texture `102751665779866` on its face and an extruded gold display number. A banner always sells a real product.
 - **Section title**: a full-width Frame 40-48 px tall in the section's colour, faded at both ends, with an extruded title centred on it:
@@ -249,7 +249,8 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - size: rail width 0.2 of panel width; tabs 0.11 of rail height, ~2% gaps;
   - state: EXACTLY ONE tab in its category colour (the active one, matching the visible content), every other tab `grey`.
   Use the rail only when the panel is at most 0.55 screen width, so it stays on screen.
-- **HUD tile**: a `tile` block, roughly square (aspect 0.97). Icon (Fit, square) centred at y 0.38 at 0.62 of the tile's height; label at y 0.84, 0.24 tall, stroke 2.5; the bands never overlap. Optional badge: a red `chip` parented to the tile base (not the face), straddling its top-right corner at (0.86, 0.06), 0.62 x 0.24 of the tile, with "!" or "NEW!".
+- **HUD tile**: a `tile` block, roughly square (aspect 0.97). Icon (Fit, square) centred at y 0.38 at 0.62 of the tile's height; label at y 0.84, 0.24 tall, stroke 2.5; the bands never overlap. Optional badge: a red `chip` parented to the tile base (not the face), straddling its top-right corner at (0.86, 0.06), 0.62 x 0.24 of the tile, with "!" or "NEW!". Set the badge's `ZIndex = 3`: the face is `ZIndex` 2, so a badge left at the default 1 draws under the face and loses its lower half. The references draw the icon larger (~0.77 of the tile) with the label over its foot; this kit keeps the label clear of the icon's box, because text partly over an image is what the UI audit reports.
+- **HUD offer** (the right-column deals both reference games show): NOT a block. Art (Fit, square) on a `ScaleType.Fit` sunburst ~1.3x its size, the offer's name as a stroked label under the art, and the price as green stroked text with the Robux glyph (`ROBUX .. " 99"`, `Color3.fromRGB(0, 255, 8)`, stroke 2.5) above or below the name. The whole offer is one transparent `ImageButton` (no image, `BackgroundTransparency = 1`) holding these, stacked in the right zone. Keep the text in its own band, clear of both the art's and the sunburst's boxes.
 - **Currency readout**: no plate. A transparent row: icon (Fit, square, the row's full height) then the value as a left-aligned label with stroke 3 and a display-number gradient (cash, gold, gem). Each currency has its own icon and gradient.
 - **Value chip** (multipliers, "x1.5 Money"): a `chip` block with one centred label. A before/after pair is two chips with a bare stroked ">" between them, never an arrow drawn from Frames.
 - **Progress bar**: ONE `chip` block whose face gradient carries the fill as a hard colour stop, with its count label on the face. A label centred over a separate fill frame is half on and half off it, which the UI audit reports.
@@ -343,9 +344,11 @@ end
 
 - Every block is a `makeSurface` block: outline, rounded corners, lip, gradient face with tinted studs. Nothing flat, square-cornered, or lipless.
 - One panel variant on the screen; the close is the red tile with a white X, inside the band (Dark) or straddling the corner (Light).
-- Green only on actions and positive values; exactly one active tab, in colour; inactive tabs, owned, and claimed states grey.
+- Green never on a destructive or cancel action; nothing for sale on grey; exactly one active tab, in colour; inactive tabs, owned, and claimed states grey; empty and locked slots slate.
 - Every item art has its sunburst; every price button uses the Robux glyph or a coin icon group.
-- Text: white, stroked, never boxed; display numbers gradient-filled; extrusion only on titles and display numbers.
+- Text: white, stroked, never boxed; white on coloured blocks; gradient-filled numbers only on the panel body or over the world; extrusion on titles, section titles, card and row names, and display numbers.
+- Nothing with text pulses in size; ambient attention is a colour pulse or (outside scrolling lists) a rotation wobble.
+- Any badge parented to a block's base has `ZIndex` 3, above the face.
 - The panel opened with blur and pop; the screenshot shows the resting state.
 - Asset IDs are only the ones in part 1, `resolve_icon` results, or verified project art.
 - No overlap, no text crossing a sibling's edge, no zero-size element, all content hardcoded.

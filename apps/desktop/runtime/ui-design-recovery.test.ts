@@ -112,6 +112,19 @@ test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests d
 
   assert.match(kit, /VerticalScrollBarInset = Enum\.ScrollBarInset\.Always/);
 
+  // A badge on a tile's base would draw under the tile's face (ZIndex 2).
+  assert.match(kit, /Set the badge's `ZIndex = 3`/);
+
+  // Both reference games agree on these; the first draft of the guidance did not.
+  const daily = await read("references/selected/modern-studs/progression-hub.md");
+  assert.match(daily, /3 x 2 grid/);
+  assert.match(daily, /Day 7 is ONE tall `tile` block on the right/);
+  const toasts = await read("references/selected/modern-studs/notification-alert.md");
+  assert.match(toasts, /No blocks, no chips, no panel: the message IS the text/);
+  const hud = await read("references/selected/modern-studs/hud-zone-system.md");
+  assert.match(hud, /each row ~7\.5% of screen height/);
+  assert.match(hud, /Top-centre elements therefore start just under it, at an 8 px offset/);
+
   const entrypoint = await read("SKILL.md");
   assert.match(entrypoint, /\*\*MODERN STUDS\*\*, the stud theme: .* used for every stud, studded, or blocky request/);
   assert.match(entrypoint, /with \*\*CLASSIC STUDS\*\*: `references\/themes\/recovered\/studs-1\.md`/);

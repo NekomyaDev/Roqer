@@ -1,27 +1,31 @@
 # MODERN STUDS selected body: notification-alert
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: partial. Both reference games show short top-of-screen banners and toasts; stack geometry and lifetimes are carried from the CLASSIC STUDS notification body.
+> Evidence: both reference games show transient messages as bare stroked text lines over the world, coloured by type (one game stacks them in the upper third, the other centres an announcement on a faded dark band). Lifetimes and stacking keep the CLASSIC STUDS notification rules.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="notification-alert")
 
 For: toasts, popup notifications, reward and achievement banners, server announcements, error and status messages: transient feedback that appears, informs, and leaves on its own. NOT for dialogs that wait for a decision (centered-dialog) or always-on readouts (hud-zone-system).
 
-The defining trait: **short-lived studded message chips at the top edge that never block play.**
+The defining trait: **big, bare, coloured text lines in the upper third that never block play.** No blocks, no chips, no panel: the message IS the text.
 
 ## Measurements (1080p)
 
-- Stack container: ONE transparent Frame, `AnchorPoint = Vector2.new(0.5, 0)`, `Position = UDim2.new(0.5, 0, 0, 78)` (below the Core UI bar), vertical `UIListLayout` with ~1% screen-height gaps. Newest toast at the top.
-- Toast: a `chip` block, ~26% screen width x ~6% screen height. Face content: icon (Fit, square, ~70% of face height) at the left with ~2% margin, then ONE line of message text (stroke 2.5, `TextTruncate = Enum.TextTruncate.AtEnd`). Reward toasts carry the matching currency or item icon.
-- Face colour encodes type: green success/reward, red error/warning, gold rare/achievement, blue information. Construction never changes, only the colour.
-- Static generation renders the system mid-life: 2-3 sample toasts of different types stacked, hardcoded content.
-- Announcement variant: ONE wide `chip` block, ~42% x ~7% of the screen, gold, extruded text, above the toasts; it replaces itself and never stacks.
-- Behaviour, ONLY when a later task wires it: tween in at most 0.3 s (the polish pop on a `UIScale`), hold 3-5 s, tween out, Destroy; at most 3 toasts visible; the announcement holds up to 8 s.
+- Stack: ONE transparent Frame, `AnchorPoint = Vector2.new(0.5, 0)`, `Position = UDim2.fromScale(0.5, 0.1)`, `Size = UDim2.fromScale(0.6, 0.3)`, holding a vertical `UIListLayout` (`HorizontalAlignment = Center`, `Padding = UDim.new(0.01, 0)`). Newest message at the top.
+- Toast: one line, a `makeText` label with `extrude = true`, stroke 3, `Size = UDim2.new(1, 0, 0.16, 0)` of the stack (~4.8% of the screen height), filled with the type's gradient:
+  - success / reward: the cash gradient;
+  - rare / achievement: the gold gradient;
+  - information: the gem gradient;
+  - error / warning: `ColorSequence.new(Color3.fromRGB(255, 120, 120), Color3.fromRGB(235, 30, 40))`.
+- A reward toast may lead with its currency or item icon: the icon (Fit, square, the line's height) and the label as one centred horizontal row, icon left.
+- Announcement variant: ONE faded dark band centred at y 0.15, `Size = UDim2.fromScale(0.62, 0.065)`: a black Frame whose `UIGradient` transparency runs 1 at both ends to 0.78 in the middle, with the message as an extruded white label (0.9 of its width, 0.6 of its height) on it. It replaces itself and never stacks; toasts sit under it.
+- Static generation renders the system mid-life: 2-3 sample messages of different types in the stack (a reward, an achievement, an error), hardcoded.
+- Behaviour, ONLY when a later task wires it: pop in with a `UIScale` 0.6 -> 1 (`Back`, `Out`, 0.2 s, a brief pop), hold 3 s, fade out by tweening the label's and its strokes' transparency to 1 over 0.3 s, then Destroy. At most 3 visible; a 4th removes the oldest. An announcement holds up to 8 s. Nothing pulses while it holds.
 
 ## Rules
 
-- Toasts never block: no backdrop, no blur, no buttons on a toast.
-- Never centre-screen: toasts live at the top edge.
-- ONE line per toast; long text truncates.
-- Chips are uniform in size and construction; only colour and content vary.
-- Toasts stack; they never overlap or sit side by side.
+- No backdrop, no blur, no blocks behind toasts, and no buttons on a message. A message that waits for a click is centered-dialog.
+- The upper third only: never the centre of the screen.
+- ONE line per message, short: a toast wrapping to two lines is a defect. Shorten the text rather than shrink the line.
+- Messages are uniform in height; only colour, icon, and text vary.
+- Messages stack; they never overlap or sit side by side.

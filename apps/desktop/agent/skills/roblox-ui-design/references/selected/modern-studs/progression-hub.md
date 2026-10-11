@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: progression-hub
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: partial. Both reference games have daily/playtime reward screens; row geometry and claim states are carried from the CLASSIC STUDS progression body.
+> Evidence: partial. Both reference games' daily-reward screens give the daily variant (3 x 2 day tiles plus a tall Day 7). Quest-row geometry and claim states are carried from the CLASSIC STUDS progression body.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="progression-hub")
 
@@ -18,7 +18,11 @@ The defining trait: **full-width goal rows, each with a progress bar and a claim
   - middle block (~52% of row width): quest name on top (left-aligned, stroke 2.5, ~36% of row height), the theme's progress bar under it (~90% of block width x ~30% of row height) with "3/10" on the bar;
   - right block: a reward chip (icon left of the amount, as one group) and the claim `button` (~16% of row width x ~60% of row height) at the right, ~1.5% margin.
 - Claim states on the claim button: completed and unclaimed = green "CLAIM"; claimed = grey "CLAIMED" with the Checkmark icon `rbxassetid://128850290702187` left of the label; incomplete = grey "CLAIM" with its bar part-filled.
-- Daily-reward track variant (a day-by-day calendar): build the panel with `scrolls = false` (the track never scrolls, and Scale heights inside a scrolling content overflow); 7 `tile` blocks in one row Frame centred in the content (`Size = UDim2.fromScale(1, 0.55)`) (day 7 twice as wide, gold), each "Day N" over a reward icon and amount; claimed days grey with the Checkmark, today green, future days slate.
+- Daily-reward variant (a 7-day calendar), laid out as both reference games do:
+  - Panel `Size = UDim2.fromScale(0.5, 0.56)`, built with `scrolls = false`: the calendar never scrolls, and Scale heights inside a scrolling content overflow.
+  - Days 1-6 are `tile` blocks in a 3 x 2 grid on the left ~72% of the content (each ~0.21 of the content's width x ~0.45 of its height, square-ish, ~2% gaps). Day 7 is ONE tall `tile` block on the right, ~0.26 of the width and the full height of the two rows, in `gold`, with a bigger reward.
+  - Each day tile, in separate bands: "Day N" at the top (0.04-0.2, stroke 2.5), the reward art on a small `Fit` sunburst in the middle (0.22-0.7), the reward name or amount at the bottom (0.74-0.94, white, extruded). Day 7 uses the same bands, scaled to its height.
+  - States: claimed days `grey` with the Checkmark `rbxassetid://128850290702187` in place of the art, today `green` with "CLAIM!" as its bottom label, future days in their reward colour. One claim action: today's tile is the button.
 - SEED demo content when the game has none: 5-7 quests with varied progress, at least one claimable, one claimed, and one barely started (1-2 of N, never 0).
 - Set every bar through the theme's `setProgress`; never build a separate fill frame.
 

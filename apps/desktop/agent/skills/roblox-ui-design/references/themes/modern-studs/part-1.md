@@ -14,9 +14,9 @@ MODERN STUDS is the stud theme: use it for every stud, studded, or blocky reques
 
 1. **Every surface is one rounded, outlined, lipped block**: a thick black outline, a darker same-hue lip along the bottom, and a saturated face that is lighter at the top. Square corners, flat faces, or a missing lip read as CLASSIC STUDS: a defect here.
 2. **Studs are embossed inside the face**: the stud texture is the face's own image, tinted by the face gradient. Never a separate high-contrast overlay. Studs may be faint or clearly visible; they are never the loudest thing on the surface.
-3. **Fixed vocabulary**: red close square with a heavy white X; green primary/CTA; purple gift and secondary premium actions; gold for rare/featured; grey for disabled, owned, inactive tabs, and empty slots.
+3. **Fixed vocabulary**: red close square with a heavy white X; green primary/CTA; purple gift and secondary premium actions; gold for rare/featured; grey for disabled, owned, and inactive tabs; slate for empty and locked slots.
 4. **Item art sits on a sunburst.** Every product, reward, and featured item has the sunburst under it.
-5. **Text is white and heavy with a black outline.** Display numbers (prices on banners, totals, currency readouts) are gradient-filled. Robux prices use the Robux text glyph, not an image.
+5. **Text is white and heavy with a black outline.** Display numbers on the panel body or over the world (totals, currency readouts) are gradient-filled; text on a coloured block stays white. Robux prices use the Robux text glyph, not an image.
 6. **Panels** come in two variants (part 2): Dark (translucent body with a coloured header band, default) and Light (white studded body with the title and close straddling the top edge).
 7. **Opening a panel blurs the world and pops the panel in** (part 2, Presentation).
 
@@ -170,7 +170,7 @@ The kit's numbers are the defaults. The reference games differed, so these range
 | Kind | Used for | Lip (share of height) | Corner | Outline px |
 |---|---|---|---|---|
 | button | price, action, confirm buttons | 0.12 (0.06-0.16) | 0.22 scale (0.12-0.3) | 3 |
-| chip | tabs, tags, toasts, value chips, bars | 0.12 (0.08-0.16) | 0.3 scale | 3 |
+| chip | tabs, tags, value chips, bars | 0.12 (0.08-0.16) | 0.3 scale | 3 |
 | tile | close, gift square, HUD tiles, slots, rank badges | 0.07 (0.04-0.1) | 0.16 scale (0.12-0.2) | 4 |
 | card | product cards, rows, banners | 0.05 (min 4 px) | 10 px (8-14) | 3 |
 | band | Dark panel header band | 0.10 | 10 px | 3 |
@@ -179,7 +179,7 @@ The kit's numbers are the defaults. The reference games differed, so these range
 
 ## Colour roles
 
-- **green**: the primary action and every Robux/currency price button. Green appears on nothing that is not an action or a positive value.
+- **green**: the primary action and every Robux/currency price button, and also a legitimate card, tier, or category colour. Green is never a destructive or cancel action.
 - **red**: close, destructive actions, errors, and timers that warn.
 - **purple**: gift buttons and secondary premium actions (skip, ad, boost).
 - **gold / yellow / orange**: featured, rare, achievement, rank 1. Choose one family per screen for featured items.
@@ -212,7 +212,7 @@ Use these exact IDs for these roles. Everything else comes from `resolve_icon` (
 |---|---|---|
 | Stud texture, every surface (default) | `rbxassetid://92521981645530` | Embossed rounded squares, 4 x 4 per tile. Shared with CLASSIC STUDS. |
 | Sparse stud texture, wide featured banners | `rbxassetid://102751665779866` | ImageTransparency ~0.7 on a banner face, `TileSize` ~2x the banner height. |
-| Sunburst under item art | `rbxassetid://91084849147872` | `ScaleType.Fit`, ImageTransparency 0.15 (its soft white rays vanish above ~0.3), ~1.25x the art, below it. |
+| Sunburst under item art | `rbxassetid://91084849147872` | ImageTransparency 0.15 (its soft white rays vanish above ~0.3), below the art. On cards: `ScaleType.Crop`, 1.7x as wide as the art band (part 2, Card). Elsewhere (offer rows, dialog and HUD tiles): `ScaleType.Fit`, ~1.25x the art. |
 
 **Public Creator Store alternatives for the stud texture.** Use only when the user asks for chunkier studs. These are public decals; the IMAGE ID goes in `Image` (core assets rule). Each image was matched to its decal by creator, upload date, and thumbnail. Confirm with `get_asset_details` on the decal (its `asset.textureId` must equal the image ID) before first use in a project.
 
