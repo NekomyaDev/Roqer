@@ -254,9 +254,23 @@ A label that crosses the edge of a sibling art or sunburst box is the collision 
   end
   ```
 - **Tab rail** (rarities or worlds on a collection/index or inventory, Daily/Weekly scopes on progression and leaderboards; never on a shop, which scrolls through titled sections instead): a vertical stack of `chip` blocks OUTSIDE the panel edge, parented to the panel so it moves with it:
-  - placement: rail `AnchorPoint` (1, 0), `Position` (0, -10, 0.14, 0) on the left; or (0, 0) and (1, 10, 0.14, 0) on the right;
+  - placement: on the RIGHT by default, `AnchorPoint` (0, 0) and `Position` (1, 10, 0.14, 0), because a HUD's menu tiles usually sit on the left; on the left, `AnchorPoint` (1, 0) and `Position` (0, -10, 0.14, 0), only when nothing sits beside the panel there;
   - size: rail width 0.2 of panel width; tabs 0.11 of rail height, ~2% gaps;
-  - state: EXACTLY ONE tab in its category colour (the active one, matching the visible content), every other tab `grey`.
+  - state: every tab keeps its own colour, as one reference game draws its tabs. EXACTLY ONE tab (the active one, matching the visible content) is at full colour and full width; every other tab is dimmed and 0.9 wide with `setTab`. A grey category (Common) still reads as active, which a grey inactive state could not show. The rail's `UIListLayout` aligns the tabs to the panel side (`HorizontalAlignment` Left on a right rail, Right on a left rail), so the narrower ones keep touching the panel's edge.
+
+  ```lua
+  local DIMMED = Color3.fromRGB(150, 150, 150)
+  local function setTab(tab, colorName, active)
+  	paint(tab, colorName)
+  	local tone = active and Color3.new(1, 1, 1) or DIMMED
+  	tab.Face.BackgroundColor3 = tone -- the face's UIGradient multiplies this, so the colour dims
+  	tab.Face.ImageColor3 = tone
+  	if not active then
+  		tab.BackgroundColor3 = PALETTE[colorName].lip:Lerp(Color3.new(0, 0, 0), 0.4)
+  	end
+  	tab.Size = UDim2.fromScale(active and 1 or 0.9, tab.Size.Y.Scale)
+  end
+  ```
   Use the rail only when the panel is at most 0.55 screen width, so it stays on screen.
 - **HUD tile**: a `tile` block, roughly square (aspect 0.97), drawn as the references draw it: a big icon with its label over the icon's foot (modern-2: icon 0.775 of the tile, label 0.26 tall at y 0.77).
   - Icon: Fit, square, `Size = UDim2.fromScale(0.8, 0.8)` of the face at (0.5, 0.45).
@@ -364,7 +378,7 @@ end
 
 - Every block is a `makeSurface` block: outline, rounded corners, lip, gradient face with tinted studs. Nothing flat, square-cornered, or lipless.
 - One panel variant on the screen; the close is the red tile with a white X, inside the band (Dark) or straddling the corner (Light).
-- Green never on a destructive or cancel action; nothing for sale on grey; exactly one active tab, in colour; inactive tabs, owned, and claimed states grey; empty and locked slots slate.
+- Green never on a destructive or cancel action; nothing for sale on grey; exactly one active tab at full colour and width, the others dimmed in their own colours; owned and claimed states grey; empty and locked slots slate.
 - Every item art has its sunburst; every price button uses the Robux glyph or a coin icon group.
 - Text: white, stroked, never boxed; white on coloured blocks except bare red or gold card tags, never on a face of their own colour; gradient-filled numbers only on the panel body or over the world; extrusion on titles, section titles, card and row names, and display numbers.
 - Nothing with text pulses in size; ambient attention is a colour pulse or (outside scrolling lists) a rotation wobble.

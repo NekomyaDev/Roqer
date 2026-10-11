@@ -167,6 +167,24 @@ test("MODERN STUDS draws art at reference size with labels over it", async () =>
   assert.match(slots, /an art box covering the whole face/);
 });
 
+/**
+ * With inactive tabs grey, a benchmark agent could not show an active grey
+ * Common tab and recoloured Common green; on the left, its index rail would
+ * have covered the HUD's menu tiles. One reference game dims inactive tabs in
+ * their own colours and puts its rail on the right.
+ */
+test("MODERN STUDS tabs dim in their own colours and the rail defaults to the right", async () => {
+  const kit = await read("references/themes/modern-studs/part-2.md");
+  assert.match(kit, /local function setTab\(tab, colorName, active\)/);
+  assert.match(kit, /placement: on the RIGHT by default/);
+  assert.doesNotMatch(kit, /every other tab `grey`/);
+  const theme = await read("references/themes/modern-studs/part-1.md");
+  assert.doesNotMatch(theme, /grey for disabled, owned, and inactive tabs/);
+  const slots = await read("references/selected/modern-studs/grid-inventory.md");
+  assert.match(slots, /tab rail on the panel's RIGHT edge \(outside\)/);
+  assert.doesNotMatch(slots, /the active tab in colour and the others grey/);
+});
+
 test("the recovered STUDS shop keeps the composition anchors that prevent viewport stretching", async () => {
   const source = await read("references/selected/studs/shop-grid.md");
   assert.match(source, /Panel: 45% screen width, centered/);

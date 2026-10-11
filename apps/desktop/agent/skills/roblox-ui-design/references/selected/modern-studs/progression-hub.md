@@ -12,7 +12,7 @@ The defining trait: **full-width goal rows, each with a progress bar and a claim
 ## Measurements (1080p)
 
 - Panel: `Size = UDim2.fromScale(0.52, 0.62)`, centered, `makePanelDark` (purple header) or `makePanelLight`.
-- Scope tabs (Daily / Weekly / Season), when asked for: the theme's tab rail on the panel's RIGHT edge, the active scope in colour and the others grey; the active tab matches the rows on screen.
+- Scope tabs (Daily / Weekly / Season), when asked for: the theme's tab rail on the panel's RIGHT edge, the active scope at full colour and the others dimmed (`setTab`); the active tab matches the rows on screen.
 - Rows: the content's vertical `UIListLayout`, ~2% panel-height gaps. Each row is a `card` block, full content width, explicit pixel height 96 (`Size = UDim2.new(1, 0, 0, 96)`), left to right on its face:
   - icon on a small sunburst: square, ~70% of row height, left margin ~1.5%;
   - middle block (~52% of row width): quest name on top (left-aligned, stroke 2.5, ~36% of row height), the theme's progress bar under it (~90% of block width x ~30% of row height) with "3/10" on the bar;

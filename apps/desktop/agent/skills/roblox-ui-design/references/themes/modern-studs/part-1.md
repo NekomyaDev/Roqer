@@ -14,7 +14,7 @@ MODERN STUDS is the stud theme: use it for every stud, studded, or blocky reques
 
 1. **Every surface is one rounded, outlined, lipped block**: a thick black outline, a darker same-hue lip along the bottom, and a saturated face that is lighter at the top. Square corners, flat faces, or a missing lip read as CLASSIC STUDS: a defect here.
 2. **Studs are embossed inside the face**: the stud texture is the face's own image, tinted by the face gradient. Never a separate high-contrast overlay. Studs may be faint or clearly visible; they are never the loudest thing on the surface.
-3. **Fixed vocabulary**: red close square with a heavy white X; green primary/CTA; purple gift and secondary premium actions; gold for rare/featured; grey for disabled, owned, and inactive tabs; slate for empty and locked slots.
+3. **Fixed vocabulary**: red close square with a heavy white X; green primary/CTA; purple gift and secondary premium actions; gold for rare/featured; grey for disabled and owned; inactive tabs dimmed in their own colour (part 2, Tab rail); slate for empty and locked slots.
 4. **Item art sits on a sunburst.** Every product, reward, and featured item has the sunburst under it.
 5. **Text is white and heavy with a black outline.** Display numbers on the panel body or over the world (totals, currency readouts) are gradient-filled; text on a coloured block stays white. Robux prices use the Robux text glyph, not an image.
 6. **Panels** come in two variants (part 2): Dark (translucent body with a coloured header band, default) and Light (white studded body with the title and close straddling the top edge).
@@ -184,7 +184,7 @@ The kit's numbers are the defaults. The reference games differed, so these range
 - **purple**: gift buttons and secondary premium actions (skip, ad, boost).
 - **gold / yellow / orange**: featured, rare, achievement, rank 1. Choose one family per screen for featured items.
 - **blue / cyan / pink**: neutral category colours (tabs, HUD tiles, section bands). One colour per destination, stable across the screen.
-- **grey**: inactive tab, owned, claimed, disabled. **slate**: empty slot, locked tile.
+- **grey**: owned, claimed, disabled. An inactive tab is not grey: it keeps its own colour, dimmed. **slate**: empty slot, locked tile.
 - **Anything for sale is saturated.** A shop card or offer row is never `grey` or `slate`: grey reads as owned or disabled, and neither reference game sells on it. Shop cards step up in value through blue, green, cyan, purple, gold, pink. Collections and inventories may encode rarity: Common grey, Uncommon green, Rare blue, Epic purple, Legendary gold, Mythic pink.
 - Dark panel body: `Color3.fromRGB(13, 17, 23)` at `BackgroundTransparency = 0.4`. Light panel body: white.
 
