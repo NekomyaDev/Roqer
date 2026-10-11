@@ -72,16 +72,19 @@ Use these to test layout classification and implementation reliability. For each
 ## Theme benchmarks
 
 22. "Make a modern stud style shop with 6 cash packs, 2 gamepasses and a starter pack."
-    - Expected: `shop-grid`, MODERN STUDS (Dark panel), lipped rounded blocks, sunburst art, Robux glyph prices.
+    - Expected: `shop-grid`, MODERN STUDS (Dark panel), ONE scrolling catalog of titled sections with NO tabs, lipped rounded blocks, white card names, visible sunburst art, Robux glyph prices.
 
 23. "Build a modern studs rebirth popup showing x1 Money to x1.5 Money, the strength requirement bar, Rebirth and Skip."
-    - Expected: `centered-dialog`, MODERN STUDS, before/after value chips, single-surface progress bar.
+    - Expected: `centered-dialog`, MODERN STUDS, panel built with `scrolls = false`, blocks on the dialog's slot table (chips ~0.15, bar ~0.115, buttons 0.32 x 0.15 of the panel), no overflow.
 
 24. "Make a stud themed pet index with rarity tabs and 100 collectables."
-    - Expected: `grid-inventory`, STUDS (no modern cue), not MODERN STUDS.
+    - Expected: `grid-inventory`, MODERN STUDS (the default stud theme), rarity tab rail outside the panel's left edge.
 
 25. "Make a modern studs lucky wheel."
-    - Expected: `wheel-spin`, STUDS template unchanged, reply says MODERN STUDS has no wheel template.
+    - Expected: `wheel-spin`, CLASSIC STUDS template unchanged, reply says MODERN STUDS has no wheel template.
+
+26. "Make a classic square stud shop with 6 coin packs."
+    - Expected: `shop-grid`, CLASSIC STUDS (explicit classic cue), recovered STUDS body.
 
 ## Scoring
 

@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: fullscreen-landing
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: none in the reference games. Geometry is carried from the STUDS landing body and re-skinned with the modern surface kit.
+> Evidence: none in the reference games. Geometry is carried from the CLASSIC STUDS landing body and re-skinned with the modern surface kit.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="fullscreen-landing")
 

@@ -5,7 +5,7 @@ Use after implementation.
 ## Structure
 - [ ] Creation vs edit was correctly identified.
 - [ ] Exactly one semantic layout selected for new UI.
-- [ ] With SIM/STUDS, the recovered theme body and matching recovered selected layout body were loaded and followed.
+- [ ] With SIM or CLASSIC STUDS, the recovered theme body and matching recovered selected layout body were loaded and followed.
 - [ ] With MODERN STUDS, both theme parts and the matching `selected/modern-studs/<layout>.md` body were loaded and followed.
 - [ ] Ordinary builder starts with the layout marker; canonical templates preserve their managed prefix before it.
 - [ ] Specialized layout used exact template deployment, not hand-authored geometry.
@@ -50,7 +50,7 @@ Use after implementation.
 - [ ] Straddling red close.
 - [ ] Sticker buttons carry the required Border-mode navy stroke and action-semantic gradient.
 
-## STUDS
+## CLASSIC STUDS
 - [ ] Square four-layer bevel construction from the recovered body.
 - [ ] Black stroke 4 on visible component bases.
 - [ ] Non-title faces keep the required vertical shine/gradient.
@@ -67,7 +67,7 @@ Use after implementation.
 - [ ] Exactly one active tab in colour, the rest grey; tab rails sit outside the panel edge.
 - [ ] Panels opened with blur and pop; HUD, sidebar, clicker, and toast screens did not blur.
 - [ ] Only part 1's asset IDs, `resolve_icon` results, or verified project art; no other game's sprites.
-- [ ] A wheel or reel used the STUDS template unchanged, and the reply said so.
+- [ ] A wheel or reel used the CLASSIC STUDS template unchanged, and the reply said so.
 
 ## Validation
 - [ ] `inspect_ui` audit ran on the live client after the last interface change and reported no problems (Roqer will not verify the run otherwise).

@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: notification-alert
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: partial. Both reference games show short top-of-screen banners and toasts; stack geometry and lifetimes are carried from the STUDS notification body.
+> Evidence: partial. Both reference games show short top-of-screen banners and toasts; stack geometry and lifetimes are carried from the CLASSIC STUDS notification body.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="notification-alert")
 

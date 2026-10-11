@@ -1,6 +1,8 @@
 # Theme: MODERN STUDS / rounded-studded-cartoon
 
-Summary only. Build from `themes/modern-studs/part-1.md`, `themes/modern-studs/part-2.md`, and `selected/modern-studs/<layout>.md`; this page never replaces them. Repository-authored from a reference study of two published games; not yet benchmark-validated.
+Summary only. Build from `themes/modern-studs/part-1.md`, `themes/modern-studs/part-2.md`, and `selected/modern-studs/<layout>.md`; this page never replaces them. Repository-authored from a reference study of two published games, and benchmarked in Studio on a shop and a rebirth dialog.
+
+MODERN STUDS is the default stud theme: every stud, studded, or blocky request uses it. CLASSIC STUDS (`themes/studs.md`) is for explicit classic requests, edits of screens built with it, and the wheel and reel templates.
 
 ## Identity
 
@@ -12,9 +14,9 @@ Summary only. Build from `themes/modern-studs/part-1.md`, `themes/modern-studs/p
 - Panels: Dark (translucent navy body, coloured header band; default) or Light (white studded body, title and close straddling the top edge).
 - Opening a panel blurs the world and pops the panel in.
 
-## Differences from STUDS
+## Differences from CLASSIC STUDS
 
-| | STUDS | MODERN STUDS |
+| | CLASSIC STUDS | MODERN STUDS |
 |---|---|---|
 | Corners | Square, no `UICorner` | Rounded `UICorner` on every block |
 | Depth | 4-layer bevel, face 0.88-0.94 | Base lip under a face, lip 0.05-0.12 |
@@ -32,4 +34,4 @@ Summary only. Build from `themes/modern-studs/part-1.md`, `themes/modern-studs/p
 
 ## Specialized layouts
 
-MODERN STUDS has no wheel or reel template: `wheel-spin` and `vertical-reel-roll` deploy the STUDS template unchanged, and the run says so once.
+MODERN STUDS has no wheel or reel template: `wheel-spin` and `vertical-reel-roll` deploy the CLASSIC STUDS template unchanged, and the run says so once.

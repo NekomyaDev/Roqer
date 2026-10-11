@@ -1,6 +1,6 @@
 # MODERN STUDS theme - part 1/2: identity, surface kit, colour, assets
 
-> Repository-authored from a study of two published modern-stud games (screen recordings and UI hierarchy captures). It ships no art or code from those games. Not yet benchmark-validated: judge every render against these rules and report anything that reads wrong.
+> Repository-authored from a study of two published modern-stud games (screen recordings and UI hierarchy captures). It ships no art or code from those games. Benchmarked in Studio on a shop and a rebirth dialog; the other layouts are unbenchmarked, so judge every render against these rules and report anything that reads wrong.
 
 Follow this theme for every visual decision, and exactly ONE selected layout body (`references/selected/modern-studs/<layout>.md`) for the skeleton. The selected body owns geometry and composition; this theme owns construction, colour and assets. When EDITING an existing UI, follow `references/core/editing.md` instead and do not load a layout body.
 
@@ -8,11 +8,11 @@ UI generation only, static data: hardcode all content. No MarketplaceService or 
 
 ## When this theme applies
 
-Use MODERN STUDS when the request asks for modern, rounded, glossy, or "new simulator style" studs, or when the project already has a builder marked `-- theme: modern-studs`. A plain "stud", "studded" or "blocky" request without a modern cue stays STUDS.
+MODERN STUDS is the stud theme: use it for every stud, studded, or blocky request, and for a project whose builder is marked `-- theme: modern-studs`. CLASSIC STUDS (the recovered square bevel theme) is used only when the user asks for classic, square, or old-style studs, or when editing a screen already built with it.
 
 ## Identity
 
-1. **Every surface is one rounded, outlined, lipped block**: a thick black outline, a darker same-hue lip along the bottom, and a saturated face that is lighter at the top. Square corners, flat faces, or a missing lip read as classic STUDS: a defect here.
+1. **Every surface is one rounded, outlined, lipped block**: a thick black outline, a darker same-hue lip along the bottom, and a saturated face that is lighter at the top. Square corners, flat faces, or a missing lip read as CLASSIC STUDS: a defect here.
 2. **Studs are embossed inside the face**: the stud texture is the face's own image, tinted by the face gradient. Never a separate high-contrast overlay. Studs may be faint or clearly visible; they are never the loudest thing on the surface.
 3. **Fixed vocabulary**: red close square with a heavy white X; green primary/CTA; purple gift and secondary premium actions; gold for rare/featured; grey for disabled, owned, inactive tabs, and empty slots.
 4. **Item art sits on a sunburst.** Every product, reward, and featured item has the sunburst under it.
@@ -193,6 +193,7 @@ The kit's numbers are the defaults. The reference games differed, so these range
 - Font: `Enum.Font.FredokaOne` through `FONT`. A cleaner geometric look may use `Font.fromEnum(Enum.Font.GothamBlack)` for the whole screen; never mix the two on one screen.
 - Every label is white with a black `UIStroke`: 2-2.5 small text, 3 buttons and headers, 3.5 panel titles. Bare glyphs: never a box, plate, or background behind a label.
 - `extrude = true` only for panel titles, section titles, and big display numbers. Body text, prices on small buttons, and labels under 24 px never extrude.
+- **Text on a coloured block face is white.** Gradient-filled numbers sit only on the panel body, a `grey`/`slate` face, a banner of a contrasting hue, or over the world (HUD readouts, totals). A cash-green amount on a green card, or gold on a yellow one, does not read.
 - Display-number gradients (vertical, through `opts.gradient`):
   - cash: `ColorSequence.new(Color3.fromRGB(180, 255, 135), Color3.fromRGB(90, 215, 55))`
   - gold: `ColorSequence.new(Color3.fromRGB(255, 245, 140), Color3.fromRGB(255, 170, 0))`
@@ -209,9 +210,9 @@ Use these exact IDs for these roles. Everything else comes from `resolve_icon` (
 
 | Role | Image ID | Notes |
 |---|---|---|
-| Stud texture, every surface (default) | `rbxassetid://92521981645530` | Embossed rounded squares, 4 x 4 per tile. Shared with STUDS. |
+| Stud texture, every surface (default) | `rbxassetid://92521981645530` | Embossed rounded squares, 4 x 4 per tile. Shared with CLASSIC STUDS. |
 | Sparse stud texture, wide featured banners | `rbxassetid://102751665779866` | ImageTransparency ~0.7 on a banner face, `TileSize` ~2x the banner height. |
-| Sunburst under item art | `rbxassetid://91084849147872` | `ScaleType.Fit`, ImageTransparency 0.45-0.6, below the art. |
+| Sunburst under item art | `rbxassetid://91084849147872` | `ScaleType.Fit`, ImageTransparency 0.15 (its soft white rays vanish above ~0.3), ~1.25x the art, below it. |
 
 **Public Creator Store alternatives for the stud texture.** Use only when the user asks for chunkier studs. These are public decals; the IMAGE ID goes in `Image` (core assets rule). Each image was matched to its decal by creator, upload date, and thumbnail. Confirm with `get_asset_details` on the decal (its `asset.textureId` must equal the image ID) before first use in a project.
 

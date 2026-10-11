@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: vertical-navigation-sidebar
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: partial. One reference game opens its left menu stack with a wide labelled Shop button (icon left, label right, alert badge). Rail geometry is carried from the STUDS sidebar body.
+> Evidence: partial. One reference game opens its left menu stack with a wide labelled Shop button (icon left, label right, alert badge). Rail geometry is carried from the CLASSIC STUDS sidebar body.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="vertical-navigation-sidebar")
 

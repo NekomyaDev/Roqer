@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: progression-hub
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: partial. Both reference games have daily/playtime reward screens; row geometry and claim states are carried from the STUDS progression body.
+> Evidence: partial. Both reference games have daily/playtime reward screens; row geometry and claim states are carried from the CLASSIC STUDS progression body.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="progression-hub")
 
@@ -18,7 +18,7 @@ The defining trait: **full-width goal rows, each with a progress bar and a claim
   - middle block (~52% of row width): quest name on top (left-aligned, stroke 2.5, ~36% of row height), the theme's progress bar under it (~90% of block width x ~30% of row height) with "3/10" on the bar;
   - right block: a reward chip (icon left of the amount, as one group) and the claim `button` (~16% of row width x ~60% of row height) at the right, ~1.5% margin.
 - Claim states on the claim button: completed and unclaimed = green "CLAIM"; claimed = grey "CLAIMED" with the Checkmark icon `rbxassetid://128850290702187` left of the label; incomplete = grey "CLAIM" with its bar part-filled.
-- Daily-reward track variant (a day-by-day calendar): 7 `tile` blocks in one row (day 7 twice as wide, gold), each "Day N" over a reward icon and amount; claimed days grey with the Checkmark, today green, future days slate.
+- Daily-reward track variant (a day-by-day calendar): build the panel with `scrolls = false` (the track never scrolls, and Scale heights inside a scrolling content overflow); 7 `tile` blocks in one row Frame centred in the content (`Size = UDim2.fromScale(1, 0.55)`) (day 7 twice as wide, gold), each "Day N" over a reward icon and amount; claimed days grey with the Checkmark, today green, future days slate.
 - SEED demo content when the game has none: 5-7 quests with varied progress, at least one claimable, one claimed, and one barely started (1-2 of N, never 0).
 - Set every bar through the theme's `setProgress`; never build a separate fill frame.
 

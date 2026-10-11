@@ -1,5 +1,7 @@
 # Theme: STUDS / studded-blocky-cartoon
 
+This is **CLASSIC STUDS**. New stud screens use MODERN STUDS (`themes/modern-studs.md`); use this theme only when the user asks for classic, square, or old-style studs, when editing a screen already built with it, and for the wheel and reel templates.
+
 ## Identity
 
 Every visible component is a square, chunky 4-layer bevel stack:

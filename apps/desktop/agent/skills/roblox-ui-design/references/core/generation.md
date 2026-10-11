@@ -7,7 +7,7 @@ Ordinary Roblox GUI is created through a builder **LocalScript**, not as loose e
 For a new UI:
 1. Inspect existing Studio/UI context only when it can affect the route.
 2. Choose the semantic layout and theme.
-3. If SIM/STUDS is active, load the recovered theme parts named by the entrypoint plus `references/selected/<theme>/<layout>.md`; that selected body is the geometry/composition authority. With MODERN STUDS, load `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md` the same way.
+3. If SIM or CLASSIC STUDS is active, load the recovered theme parts named by the entrypoint plus `references/selected/<theme>/<layout>.md`; that selected body is the geometry/composition authority. With MODERN STUDS, load `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md` the same way.
 4. Resolve required icons/assets before or while writing the builder.
 5. Start an ordinary builder with `-- layout: <slug>`. Canonical wheel/reel templates keep their managed prefix before this marker.
 6. Build a stable named ScreenGui and stable builder LocalScript.
@@ -19,7 +19,7 @@ For a new UI:
 
 For an ordinary selected layout, interpret its `Scale` measurements directly against the live `ScreenGui`/viewport. A rule such as `Size = UDim2.new(0.45, 0, ...)` means 45% of the actual screen width, not 45% of an invented fixed-width design canvas.
 
-A panel sized by separate width and height screen fractions (STUDS panels such as `UDim2.new(0.45, 0, 0.66, 0)`) describes its 1080p shape, not a stretch. Lock that shape with a `UIAspectRatioConstraint` of `AspectRatio = (widthScale × 16) / (heightScale × 9)` and the default `FitWithinMaxSize`, so an ultra-wide or narrow window shrinks the panel instead of distorting it. Derive every pixel measurement inside it (cells, banner, rows) from the panel's `AbsoluteSize`, not the viewport, so they follow the locked shape.
+A panel sized by separate width and height screen fractions (CLASSIC and MODERN STUDS panels such as `UDim2.new(0.45, 0, 0.66, 0)`) describes its 1080p shape, not a stretch. Lock that shape with a `UIAspectRatioConstraint` of `AspectRatio = (widthScale × 16) / (heightScale × 9)` and the default `FitWithinMaxSize`, so an ultra-wide or narrow window shrinks the panel instead of distorting it. Derive every pixel measurement inside it (cells, banner, rows) from the panel's `AbsoluteSize`, not the viewport, so they follow the locked shape.
 
 Use Scale for responsive outer geometry, Offset for deliberate pixel details, and layout objects/constraints for repeated content. **Do not wrap an ordinary selected layout in an arbitrary fixed `DesignCanvas` plus root `UIScale` unless that selected body or an exact specialized template explicitly requires it.** Mixing viewport-relative Scale rules with an unrelated fixed canvas changes their meaning and can collapse column counts or distort density.
 

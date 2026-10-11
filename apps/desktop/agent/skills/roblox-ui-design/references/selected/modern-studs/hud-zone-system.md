@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: hud-zone-system
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: both reference games' HUDs: a left column of labelled square tiles with corner badges, a right column of tiles or offers, plate-less gradient currency readouts, and (one game) a top-centre row of coloured nav chips. Zones, keep-outs, and bars keep the STUDS HUD rules.
+> Evidence: both reference games' HUDs: a left column of labelled square tiles with corner badges, a right column of tiles or offers, plate-less gradient currency readouts, and (one game) a top-centre row of coloured nav chips. Zones, keep-outs, and bars keep the CLASSIC STUDS HUD rules.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="hud-zone-system")
 

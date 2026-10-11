@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: admin-control-panel
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: none in the reference games. The tree and its numbers are carried from the STUDS admin body and re-skinned with the modern surface kit.
+> Evidence: none in the reference games. The tree and its numbers are carried from the CLASSIC STUDS admin body and re-skinned with the modern surface kit.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="admin-control-panel")
 
@@ -13,7 +13,7 @@ The defining trait: **a two-pane console: categories on the left, a dense grid o
 
 ```
 ScreenGui (ZIndexBehavior = Sibling)
-└─ Panel: makePanelDark(gui, "AdminPanel", panelW, panelH, "blue", "Admin", <shield/crown icon from resolve_icon>)
+└─ Panel: makePanelDark(gui, "AdminPanel", panelW, panelH, "blue", "Admin", <shield/crown icon from resolve_icon>, false)
    panelW = 0.55 * math.min(1, 1.78 / (viewport.X / viewport.Y)); panelH from the table in Rules.
    The Dark variant is mandatory here: an operator console is never the Light card.
    ├─ Rail Frame: Position (0, 14, 0.15, 16), Size (0.22, 0, 0.85, -30), transparent,
@@ -31,7 +31,7 @@ ScreenGui (ZIndexBehavior = Sibling)
             └─ one `button` block per command, label only.
 ```
 
-The panel built by `makePanelDark` already provides the header band, close, and a `Content` ScrollingFrame; for this layout, set that `Content.Visible = false` and build the rail and pane directly on the panel as above.
+Call `makePanelDark` with `scrolls = false`; it provides the header band and close. Leave its `Content` frame empty and build the rail and pane directly on the panel as above. Only `CommandScroll` scrolls, and its cells are pixel heights.
 
 Only the active category's page exists under CommandScroll at any moment: destroy the previous page's buttons before building the next.
 

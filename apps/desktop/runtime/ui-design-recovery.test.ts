@@ -86,6 +86,35 @@ test("the MODERN STUDS theme ships complete, labelled as authored, with only vet
   }
 });
 
+/**
+ * The first MODERN STUDS benchmarks in Studio: a rebirth dialog overflowed
+ * because its blocks were sized in Scale inside the panel's ScrollingFrame,
+ * whose canvas grows with them, and the fix shrank everything; the shop grew
+ * a tab rail neither reference game has. MODERN STUDS is now also the stud
+ * theme a plain stud request gets.
+ */
+test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests default to it", async () => {
+  const kit = await read("references/themes/modern-studs/part-2.md");
+  assert.match(kit, /local function makeContent\(panel, scrolls, barColor\)/);
+  assert.match(kit, /ScrollingDirection = Enum\.ScrollingDirection\.Y/);
+  assert.match(kit, /makePanelDark\(gui, name, widthScale, heightScale, headerColor, title, iconId, scrolls\)/);
+  assert.match(kit, /never on a shop/);
+
+  const dialog = await read("references/selected/modern-studs/centered-dialog.md");
+  assert.match(dialog, /scrolls = false/);
+  assert.match(dialog, /\| Value row \| 0\.37 \| 0\.15 \|/);
+  assert.match(dialog, /`Size = UDim2\.fromScale\(0\.32, 0\.15\)`/);
+  assert.doesNotMatch(dialog, /UIListLayout` \(`HorizontalAlignment = Center`/);
+
+  const shop = await read("references/selected/modern-studs/shop-grid.md");
+  assert.match(shop, /A shop has NO tabs/);
+  assert.doesNotMatch(shop, /tab rail on the panel's RIGHT edge/);
+
+  const entrypoint = await read("SKILL.md");
+  assert.match(entrypoint, /\*\*MODERN STUDS\*\*, the stud theme: .* used for every stud, studded, or blocky request/);
+  assert.match(entrypoint, /with \*\*CLASSIC STUDS\*\*: `references\/themes\/recovered\/studs-1\.md`/);
+});
+
 test("the recovered STUDS shop keeps the composition anchors that prevent viewport stretching", async () => {
   const source = await read("references/selected/studs/shop-grid.md");
   assert.match(source, /Panel: 45% screen width, centered/);

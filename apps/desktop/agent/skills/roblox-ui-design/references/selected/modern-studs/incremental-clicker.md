@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: incremental-clicker
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: one reference game shows its main total as a big top-centre cash-gradient number with no plate. The click target and secondary buttons are carried from the STUDS clicker body.
+> Evidence: one reference game shows its main total as a big top-centre cash-gradient number with no plate. The click target and secondary buttons are carried from the CLASSIC STUDS clicker body.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="incremental-clicker")
 

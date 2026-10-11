@@ -8,7 +8,7 @@ For: case/crate/egg opening screens where prizes roll vertically through a cente
 
 ## Route
 
-- A reel is a specialized template layout, and the maintained template exists only for SIM and STUDS. With MODERN STUDS active, deploy the **STUDS** reel exactly: load `references/specialized/vertical-reel-roll.md` and `templates/studs/vertical-reel-roll.lua` in the same route call, and follow that contract.
+- A reel is a specialized template layout, and the maintained template exists only for SIM and CLASSIC STUDS. With MODERN STUDS active, deploy the **CLASSIC STUDS** reel exactly: load `references/specialized/vertical-reel-roll.md` and `templates/studs/vertical-reel-roll.lua` in the same route call, and follow that contract.
 - Customize only the documented `CONFIG` values. Never restyle the template with the modern surface kit, redraw its geometry, or move its managed prefix: its bytes are protected.
-- Tell the user once, in the run's reply, that the reel uses the classic STUDS construction because MODERN STUDS has no reel template yet.
+- Tell the user once, in the run's reply, that the reel uses the CLASSIC STUDS construction because MODERN STUDS has no reel template yet.
 - The rest of the screen (a HUD tile that opens the reel, a result dialog) still uses MODERN STUDS.

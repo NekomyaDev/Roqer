@@ -25,7 +25,7 @@ Rules:
 
 Seed the states a real shop shows, inside the layout's own cells and bands:
 
-- **Tier** on each card (Common, Rare, Epic, Legendary), expressed with the theme's own means: STUDS through the card's face color, SIM through the card fill tint and the sticker `GRADIENTS`.
+- **Tier** on each card (Common, Rare, Epic, Legendary), expressed with the theme's own means: CLASSIC STUDS through the card's face color, SIM through the card fill tint and the sticker `GRADIENTS`.
 - **Tags** on one to three cards (HOT, NEW, BEST, x2): a small upright sticker in the card's top corner, inside the card's bounds and clear of name, art, and price.
 - **Owned:** one item whose button reads OWNED in the theme's grey treatment.
 - **Discount:** one old price struck through beside the new one, or a "-60%" sticker.
@@ -33,12 +33,12 @@ Seed the states a real shop shows, inside the layout's own cells and bands:
 
 **Tabs:** with three or more categories, a row of theme buttons at the top of the content area may switch which category's section is shown, with a clear active state. Each section still uses the selected body's grid, cell size, column rule, and density rules. Two categories stay as stacked sections.
 
-**Balances:** when items cost soft currency, show coin and gem balances with small "+" buttons where the layout allows status content: SIM in pills straddling the top edge, STUDS on the first content row, never in the title bar.
+**Balances:** when items cost soft currency, show coin and gem balances with small "+" buttons where the layout allows status content: SIM in pills straddling the top edge, CLASSIC and MODERN STUDS on the first content row, never in the title bar.
 
 ## Finishing detail
 
-- **SIM gloss:** on sticker buttons and cards, a white child frame with the same corner and a top-down transparency gradient (about 0.55 at the top, fully clear by the middle), above the gradient face and below the text. STUDS already carries its shine in the face gradient; never cover the stud pattern.
-- **MODERN STUDS:** tier is the card's palette colour, tags are the theme's `chip` tag, tabs and balances follow the MODERN STUDS selected body (tab rail outside the panel, balances on the first content row), and no SIM gloss overlay: the lip and face gradient are its shine.
+- **SIM gloss:** on sticker buttons and cards, a white child frame with the same corner and a top-down transparency gradient (about 0.55 at the top, fully clear by the middle), above the gradient face and below the text. CLASSIC STUDS already carries its shine in the face gradient; never cover the stud pattern.
+- **MODERN STUDS:** tier is the card's palette colour, tags are the theme's `chip` tag, a shop has no tabs at all (one scrolling catalog of titled sections), balances sit on the first content row, and no SIM gloss overlay: the lip and face gradient are its shine.
 - **Outline scaling:** record each `UIStroke` with its guide thickness and multiply by `viewport height / 1080` (minimum 1) whenever the viewport changes, so the guide's values stay exact at 1080p and phones do not get heavy outlines.
 - **Text caps:** give `TextScaled` labels a `UITextSizeConstraint` so a large screen does not inflate them.
 

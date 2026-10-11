@@ -1,7 +1,7 @@
 # MODERN STUDS selected body: select-screen
 
 > Repository-authored from the modern-stud reference study; not yet benchmark-validated. Construction comes from `references/themes/modern-studs/part-1.md` and `part-2.md`; this body owns geometry and composition.
-> Evidence: none in the reference games. Geometry is carried from the STUDS select body and re-skinned with the modern surface kit.
+> Evidence: none in the reference games. Geometry is carried from the CLASSIC STUDS select body and re-skinned with the modern surface kit.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="select-screen")
 
@@ -11,8 +11,8 @@ The defining trait: **a row of comparable option tiles, exactly one selected, an
 
 ## Measurements (1080p)
 
-- Panel: `Size = UDim2.fromScale(0.5, 0.55)`, centered, `makePanelDark` or `makePanelLight`.
-- Option tiles: 3 to 5 `card` blocks in ONE centered row, each ~28% of content width, portrait aspect ~0.8 (`UIAspectRatioConstraint`), ~3% content-width gaps, laid out by a horizontal `UIListLayout` centred as a group. Set `ScrollingEnabled = false` on the content.
+- Panel: `Size = UDim2.fromScale(0.5, 0.55)`, centered, `makePanelDark` or `makePanelLight` with `scrolls = false`: a select screen never scrolls, and Scale heights inside a scrolling content overflow.
+- Option tiles: 3 to 5 `card` blocks in ONE centered row Frame (`Position = UDim2.fromScale(0.5, 0.42)`, `AnchorPoint = Vector2.new(0.5, 0.5)`, `Size = UDim2.fromScale(1, 0.62)` of the content), each ~28% of the row's width, portrait aspect ~0.8 (`UIAspectRatioConstraint`), ~3% gaps, laid out by a horizontal `UIListLayout` centred as a group.
   - Bands: art 0.08-0.62 on a sunburst (Fit, square), name 0.66-0.82 (extruded, stroke 3), one-line stat or role 0.84-0.95 (stroke 2).
   - 6 or more options: the SAME tile size, wrapping to a second row; never shrink tiles to fit one row.
 - Selected tile: in its option colour, outline raised to 5 (`base.UIStroke.Thickness = 5`), and a `UIScale` of 1.05 on its base. Unselected tiles: `paint`ed `grey`, outline 3, scale 1.

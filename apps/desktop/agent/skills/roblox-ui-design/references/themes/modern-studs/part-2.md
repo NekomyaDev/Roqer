@@ -1,6 +1,6 @@
 # MODERN STUDS theme - part 2/2: panels, components, presentation, rules
 
-> Repository-authored from the modern-stud reference study; not yet benchmark-validated. Uses the surface kit from part 1 (`makeSurface`, `paint`, `makeText`, `PALETTE`, `ROBUX`, `SUNBURST`).
+> Repository-authored from the modern-stud reference study; benchmarked in Studio on a shop and a rebirth dialog. Uses the surface kit from part 1 (`makeSurface`, `paint`, `makeText`, `PALETTE`, `ROBUX`, `SUNBURST`).
 
 ## Panels
 
@@ -12,6 +12,7 @@ Both variants:
 - Outline: black `UIStroke` 5 with `ApplyStrokeMode.Border`, `UICorner` 14 px.
 - The light inner rim is a child Frame with its own stroke: one object renders one stroke.
 - Panels have no lip.
+- **Content scrolls only when the selected body says so.** Pass `scrolls = false` for any layout that does not scroll; its `Content` is then a plain Frame and Scale sizes inside it are shares of the visible area. Inside a scrolling `Content`, size children in pixels computed from `content.AbsoluteSize` (Scale X is safe, Scale Y is not).
 
 ### Dark variant (default): translucent body, coloured header band
 
@@ -19,7 +20,26 @@ Both variants:
 local HEADER_H = 0.15 -- band height, share of panel height
 local PAD = 14        -- content inset, px
 
-local function makePanelDark(gui, name, widthScale, heightScale, headerColor, title, iconId)
+-- The panel's content area. scrolls = false for layouts that never scroll (dialogs, select
+-- screens, consoles): inside a ScrollingFrame, Scale heights resolve against the canvas, which
+-- grows with its own contents, so a dialog sized in Scale there overflows its panel.
+local function makeContent(panel, scrolls, barColor)
+	local content = Instance.new(scrolls == false and "Frame" or "ScrollingFrame")
+	content.Name = "Content"
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	if scrolls ~= false then
+		content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		content.CanvasSize = UDim2.new()
+		content.ScrollingDirection = Enum.ScrollingDirection.Y
+		content.ScrollBarThickness = 6
+		content.ScrollBarImageColor3 = barColor
+	end
+	content.Parent = panel
+	return content
+end
+
+local function makePanelDark(gui, name, widthScale, heightScale, headerColor, title, iconId, scrolls)
 	local panel = Instance.new("Frame")
 	panel.Name = name
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -97,17 +117,9 @@ local function makePanelDark(gui, name, widthScale, heightScale, headerColor, ti
 	closeSquare.Parent = close
 	makeText(closeFace, "X", { size = UDim2.fromScale(0.72, 0.72), stroke = 3 })
 
-	local content = Instance.new("ScrollingFrame")
-	content.Name = "Content"
-	content.BackgroundTransparency = 1
-	content.BorderSizePixel = 0
+	local content = makeContent(panel, scrolls, Color3.fromRGB(230, 230, 235))
 	content.Position = UDim2.new(0, PAD, HEADER_H, 16)
 	content.Size = UDim2.new(1, -2 * PAD, 1 - HEADER_H, -16 - PAD)
-	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	content.CanvasSize = UDim2.new()
-	content.ScrollBarThickness = 6
-	content.ScrollBarImageColor3 = Color3.fromRGB(230, 230, 235)
-	content.Parent = panel
 	return panel, content, close, bandFace
 end
 ```
@@ -119,7 +131,7 @@ Each panel has its own stable header colour, for example Shop green, Index cyan,
 ```lua
 local PAD = 14 -- content inset, px (the same value the Dark variant uses)
 
-local function makePanelLight(gui, name, widthScale, heightScale, title, iconId)
+local function makePanelLight(gui, name, widthScale, heightScale, title, iconId, scrolls)
 	local panel = Instance.new("ImageLabel") -- the body is the stud image, so straddling children sit on one painted element
 	panel.Name = name
 	panel.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -186,17 +198,9 @@ local function makePanelLight(gui, name, widthScale, heightScale, title, iconId)
 	closeSquare.Parent = close
 	makeText(closeFace, "X", { size = UDim2.fromScale(0.72, 0.72), stroke = 3 })
 
-	local content = Instance.new("ScrollingFrame")
-	content.Name = "Content"
-	content.BackgroundTransparency = 1
-	content.BorderSizePixel = 0
+	local content = makeContent(panel, scrolls, Color3.fromRGB(120, 120, 130))
 	content.Position = UDim2.new(0, PAD, 0.11, 0)
 	content.Size = UDim2.new(1, -2 * PAD, 0.89, -PAD)
-	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	content.CanvasSize = UDim2.new()
-	content.ScrollBarThickness = 6
-	content.ScrollBarImageColor3 = Color3.fromRGB(120, 120, 130)
-	content.Parent = panel
 	return panel, content, close
 end
 ```
@@ -212,8 +216,8 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
 - **Gift button**: `tile` purple square beside a price button, the same height, with the Gift icon at 70% of its size. Optional; when present it sits to the right of the price button with a 6 px gap.
 - **Action button**: `button` block, green for the affirmative action, purple for skip/boost, red for destructive, grey for cancel. Label only, or icon left of the label as one centred group.
 - **Card** (product, reward, collection entry): `card` block. Bands top to bottom, as shares of card height:
-  - name 0.04-0.17, centred (left-aligned at 0.6 width when the card has a tag);
-  - art 0.19-0.69: an `ImageLabel` (Fit, square constraint, `ZIndex` 2) on a sunburst (Fit, square, ImageTransparency 0.5, `ZIndex` 1) of the same centre and ~1.25x its size, kept inside the art band;
+  - name 0.04-0.17, white, centred (left-aligned at 0.6 width when the card has a tag);
+  - art 0.19-0.69: an `ImageLabel` (Fit, square constraint, `ZIndex` 2) on a sunburst (Fit, square, ImageTransparency 0.15, `ZIndex` 1) of the same centre and ~1.25x its size. Its soft white rays vanish above ~0.3 transparency and on light faces; on `grey` and `yellow` faces tint it with `ImageColor3 = PALETTE.gold.bottom`;
   - price/action row 0.73-0.94: price button ~0.72 card width, or price + gift.
   Bands never overlap; with no art, the card shrinks rather than leaving an empty band.
 - **Tag** ("NEW!", "BEST", "-50%", "LIMITED"): a `chip` block, red or gold, inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17), white text stroke 2. At most one per card.
@@ -239,7 +243,7 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   	return band
   end
   ```
-- **Tab rail** (categories, rarities, scopes): a vertical stack of `chip` blocks OUTSIDE the panel edge, parented to the panel so it moves with it:
+- **Tab rail** (rarities or worlds on a collection/index or inventory, Daily/Weekly scopes on progression and leaderboards; never on a shop, which scrolls through titled sections instead): a vertical stack of `chip` blocks OUTSIDE the panel edge, parented to the panel so it moves with it:
   - placement: rail `AnchorPoint` (1, 0), `Position` (0, -10, 0.14, 0) on the left; or (0, 0) and (1, 10, 0.14, 0) on the right;
   - size: rail width 0.2 of panel width; tabs 0.11 of rail height, ~2% gaps;
   - state: EXACTLY ONE tab in its category colour (the active one, matching the visible content), every other tab `grey`.
@@ -315,6 +319,7 @@ end
 - `UICorner` rounds an `ImageLabel`'s image, so the stud tile stays inside the rounded face. If a screenshot ever shows stud pixels past a corner, raise the face's `ImageTransparency` by 0.1 and report it.
 - No visible element inside the top-left 350×70 Core UI keep-out; elements near the top-left anchor their y at a 70 px offset.
 - Panel height stays within [0.40, 0.66] of the screen unless the selected body says otherwise, and content ends within ~12% of the panel bottom.
+- A `ScrollingFrame` with `AutomaticCanvasSize` measures Scale heights against its canvas, which grows with the children: a child sized `UDim2.fromScale(1, 0.3)` inside it is 30% of a canvas that then grows, and the layout overflows. Non-scrolling layouts use `scrolls = false`; scrolling ones size rows and cells in pixels.
 
 ## Final check
 
@@ -329,4 +334,4 @@ end
 
 ## Layout bodies
 
-Load exactly one with this theme: `references/selected/modern-studs/<layout>.md`. Slugs: `shop-grid`, `centered-dialog`, `fullscreen-landing`, `admin-control-panel`, `hud-zone-system`, `select-screen`, `grid-inventory`, `vertical-navigation-sidebar`, `progression-hub`, `stat-leaderboard`, `incremental-clicker`, `notification-alert`, `wheel-spin`, `vertical-reel-roll`. MODERN STUDS has no wheel or reel template of its own: those two bodies route to the STUDS templates.
+Load exactly one with this theme: `references/selected/modern-studs/<layout>.md`. Slugs: `shop-grid`, `centered-dialog`, `fullscreen-landing`, `admin-control-panel`, `hud-zone-system`, `select-screen`, `grid-inventory`, `vertical-navigation-sidebar`, `progression-hub`, `stat-leaderboard`, `incremental-clicker`, `notification-alert`, `wheel-spin`, `vertical-reel-roll`. MODERN STUDS has no wheel or reel template of its own: those two bodies route to the CLASSIC STUDS templates.
