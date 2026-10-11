@@ -23,7 +23,7 @@ The host marks clear UI-creation requests so this entrypoint is not optional. Mi
    - `references/core/assets.md`
    - `references/core/validation.md`
    - `references/core/polish.md`, except for `wheel-spin` and `vertical-reel-roll`
-   - with **SIM**: `references/themes/recovered/sim-1.md`, `sim-2.md`, `sim-3.md`, and `references/selected/sim/<layout>.md`
+   - with **SIM**: `references/themes/recovered/sim-1.md`, `sim-2.md`, `sim-3.md`, `references/selected/sim/<layout>.md`, and `references/themes/sim-refresh.md`, which updates them
    - with **CLASSIC STUDS**: `references/themes/recovered/studs-1.md`, `studs-2.md`, and `references/selected/studs/<layout>.md`
    - with **MODERN STUDS**: `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md`; `wheel-spin` has its own MODERN STUDS template, and for `vertical-reel-roll` that body routes to the CLASSIC STUDS template
    - with no packaged theme: the chosen generic layout reference instead of recovered theme/selected-body resources
@@ -74,7 +74,7 @@ For visual/design decisions use this order:
 
 1. exact specialized template + current specialized contract;
 2. supplied reference image for composition when reproducing one;
-3. selected body at `references/selected/<theme>/<layout>.md` (recovered for SIM and CLASSIC STUDS, repository-authored for MODERN STUDS);
+3. selected body at `references/selected/<theme>/<layout>.md` (recovered for SIM and CLASSIC STUDS, repository-authored for MODERN STUDS); for SIM, `references/themes/sim-refresh.md` outranks the recovered SIM body and parts wherever they differ;
 4. packaged theme body (recovered SIM and CLASSIC STUDS parts, or MODERN STUDS `part-1.md`/`part-2.md`);
 5. neutral/shared layout summary;
 6. generic `roblox-gui` layout advice.

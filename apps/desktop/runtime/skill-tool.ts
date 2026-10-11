@@ -18,11 +18,12 @@ export type SkillToolDefinition = Readonly<{
  * generation rules, a theme, a layout, the asset and icon catalogs, and the
  * validation rules; asking for those one at a time costs five round trips
  * before any work starts, and because the client owns the agent loop each one
- * is a turn that re-sends the whole conversation. Eight is enough for the
- * largest such group with room to spare, and small enough that a batch is still
- * a deliberate list rather than "load everything".
+ * is a turn that re-sends the whole conversation. The largest such group, a
+ * SIM route with its refresh, is nine resources; ten leaves room to spare and is
+ * still small enough that a batch is a deliberate list rather than "load
+ * everything".
  */
-export const MAX_SKILL_RESOURCES = 8;
+export const MAX_SKILL_RESOURCES = 10;
 
 /**
  * Aggregate size of one batch.

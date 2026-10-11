@@ -69,6 +69,17 @@ The polish layer puts tabs in a row at the top of the content and SIM balance pi
 
 Normalized policy: the MODERN STUDS selected body wins, as for any theme or selected body; the polish layer still adds its motion, tier, tag, owned, and discount states inside the theme's blocks.
 
+## SIM refresh vs recovered SIM
+
+`references/themes/sim-refresh.md` is repository-authored from a 2026-10-11 study of three simulator games. It changes recovered SIM rules in these places:
+- the card face carries a faint tiled pattern instead of staying clean white;
+- the drop shadow starts lower;
+- item art is big, with labels as children of the art;
+- shop cells become tier-coloured item tiles with the price under them, and the content width is measured instead of assumed;
+- HUD icons sit over the ends of pills and tiles.
+
+Normalized policy: on a SIM screen the refresh wins wherever it differs from the recovered SIM parts or selected body; everything it does not mention follows the recovered guidance. The recovered files are unchanged.
+
 ## Conflict priority
 
 When executing:

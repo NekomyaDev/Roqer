@@ -186,6 +186,33 @@ test("MODERN STUDS tabs dim in their own colours and the rail defaults to the ri
   assert.doesNotMatch(slots, /the active tab in colour and the others grey/);
 });
 
+/**
+ * Three simulator games put a faint pattern on their panels, draw item art big
+ * with labels over it, colour item tiles by tier, and draw HUD icons over the
+ * ends of their pills. Rendered in Studio, the recovered SIM scaffold also
+ * failed the UI audit on every dialog (title and close crossing the drop
+ * shadow's edge), and its shop assumed a 1080p content width, so five cards
+ * wrapped into rows of 3 and 2. The SIM refresh carries those fixes, loads with
+ * every SIM route, and leaves the recovered files unchanged.
+ */
+test("the SIM refresh loads with SIM routes and carries its measured fixes", async () => {
+  const entrypoint = await read("SKILL.md");
+  assert.match(entrypoint, /with \*\*SIM\*\*: .*`references\/themes\/sim-refresh\.md`, which updates them/);
+  const refresh = await read("references/themes/sim-refresh.md");
+  assert.match(refresh, /Repository-authored/);
+  assert.match(refresh, /card\.Image = PATTERN/);
+  assert.match(refresh, /shadow\.Size = UDim2\.new\(1, 6, 1, -34\)/);
+  assert.match(refresh, /local function makeItemTile\(parent, item\)/);
+  assert.match(refresh, /CONTENT_W = content\.AbsoluteWindowSize\.X - 40/);
+  assert.match(refresh, /parented to the tile's ICON/);
+  // Its one new asset is a public Creator Store decal, named with its image.
+  assert.deepEqual([...new Set(assetIds(refresh))], ["14605469420"]);
+  assert.match(refresh, /decal 14605469461 "Star Pattern"/);
+  // The recovered parts stay as captured; the refresh overrides them.
+  assert.match(await read("references/themes/recovered/sim-2.md"), /The card face stays CLEAN white/);
+  assert.match(await read("references/core/contradictions.md"), /## SIM refresh vs recovered SIM/);
+});
+
 test("the recovered STUDS shop keeps the composition anchors that prevent viewport stretching", async () => {
   const source = await read("references/selected/studs/shop-grid.md");
   assert.match(source, /Panel: 45% screen width, centered/);

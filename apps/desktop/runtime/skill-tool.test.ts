@@ -247,8 +247,8 @@ test("a batch request is validated before anything is read", async () => {
   await assert.rejects(() => run({ name: "roblox-test", resources: "b.md" }), /must be an array/);
   await assert.rejects(() => run({ name: "roblox-test", resources: [7] }), /only relative skill-resource paths/);
   await assert.rejects(
-    () => run({ name: "roblox-test", resources: Array.from({ length: 9 }, (_, i) => `${i}.md`) }),
-    /at most 8 resources per call/,
+    () => run({ name: "roblox-test", resources: Array.from({ length: 11 }, (_, i) => `${i}.md`) }),
+    /at most 10 resources per call/,
   );
 });
 
@@ -339,7 +339,7 @@ test("a themed shop route arrives complete in at most two inline results", async
   const core = ["references/core/generation.md", "references/core/assets.md", "references/core/validation.md", "references/core/polish.md"];
   const routes = {
     sim: [...core, "references/themes/recovered/sim-1.md", "references/themes/recovered/sim-2.md",
-      "references/themes/recovered/sim-3.md", "references/selected/sim/shop-grid.md"],
+      "references/themes/recovered/sim-3.md", "references/selected/sim/shop-grid.md", "references/themes/sim-refresh.md"],
     studs: [...core, "references/themes/recovered/studs-1.md", "references/themes/recovered/studs-2.md",
       "references/selected/studs/shop-grid.md"],
     modernStuds: [...core, "references/themes/modern-studs/part-1.md", "references/themes/modern-studs/part-2.md",

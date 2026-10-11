@@ -117,6 +117,16 @@ On 2026-10-11 the repository added the MODERN STUDS theme: `references/themes/mo
 
 Also on 2026-10-11 the repository added `templates/modern-studs/wheel-spin.lua`, the MODERN STUDS prize wheel. It is repository-authored, not part of the handoff: it is the CLASSIC STUDS wheel template with its button and label builders replaced by the MODERN STUDS surface kit from `themes/modern-studs/part-1.md`. Its managed prefix, `CONFIG` API, wheel chrome asset IDs, wedge geometry, sounds and spin animation are copied unchanged from `templates/studs/wheel-spin.lua`. No sprite from the studied games is used. The CLASSIC and SIM templates are unchanged.
 
+Also on 2026-10-11 the repository added `references/themes/sim-refresh.md`, repository-authored from a study of three published simulator games: screen recordings of all three and a UI hierarchy capture of one. It updates the recovered SIM theme without editing it:
+- a faint pattern on the card;
+- a lower drop shadow;
+- big item art with labels over it;
+- tier-coloured item tiles;
+- a measured shop width;
+- HUD icons over the ends of pills and tiles.
+
+It ships no art or code from those games. Its one new asset is the public Creator Store decal 14605469461 "Star Pattern" by 28Pixels, used by its image ID 14605469420. To fit the SIM route with the refresh in one batch, the desktop runtime's `load_skill` limit rose from 8 to 10 resources per call.
+
 Legacy tool/deployment names that appear inside recovered bodies are provenance from the source environment, not Roqer capabilities. `SKILL.md`, current core references, the desktop developer instructions, and specialized contract/template files define execution in Roqer.
 
 The supplied archive identifies captured payload hashes but declares no licence or original rights holder. Do not represent this material as part of `roblox-brain` or as repository-authored. The agent manifest lists `roblox-ui-design` as customized so this provenance boundary is visible to release review.
