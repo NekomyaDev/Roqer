@@ -221,7 +221,10 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - art 0.18-0.75: a transparent holder centred at (0.5, 0.465), `Size = UDim2.fromScale(1, 0.57)` with a height-dominant square constraint. In it, the art `ImageLabel` (Fit, `Size = UDim2.fromScale(0.9, 0.9)`, `ZIndex` 2) on the sunburst (`ScaleType.Crop`, `Size = UDim2.fromScale(1.7, 1)`, centred, ImageTransparency 0.15, `ZIndex` 1). The crop spreads the rays across the card's width while keeping them inside the art band, clear of the name and the price. On `yellow` and `gold` faces tint the sunburst with `ImageColor3 = PALETTE.gold.bottom` so the rays still show;
   - price/action row 0.77-0.96: price button `Size = UDim2.fromScale(0.74, 0.19)`, anchored top-centre at (0.5, 0.77), or price + gift.
   Bands never overlap; with no art, the card shrinks rather than leaving an empty band. Art that floats (Presentation) is sized at 0.8 instead of 0.9, so its travel stays inside the band.
-- **Tag** ("NEW!", "BEST", "-50%", "LIMITED"): a `chip` block, red or gold, inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17), white text stroke 2. At most one per card.
+- **Tag** ("NEW!", "HOT", "BEST", "-75%", "LIMITED"): bare coloured text, no block behind it, as both reference games do. One `makeText` label, `extrude = true`, stroke 3, right-aligned inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17). At most one per card.
+  - Colour by meaning: red `Color3.fromRGB(255, 60, 60)` for NEW!, HOT, OP! and discounts; the gold gradient for BEST, LIMITED and MOST POPULAR.
+  - The thick black stroke carries it on any face, but never put a tag on a face of its own colour: on a red or pink card use the gold tag, on a gold or yellow card use the red one.
+  - Inside a scrolling list a tag stays upright. A HUD offer outside any scrolling list may tilt its tag to `Rotation = -10`, as one reference game does.
 - **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. A featured banner may use the sparse stud texture `102751665779866` on its face and an extruded gold display number. A banner always sells a real product.
 - **Section title**: a full-width Frame 40-48 px tall in the section's colour, faded at both ends, with an extruded title centred on it:
 
@@ -315,8 +318,10 @@ end
   local function loop(seconds)
   	return TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
   end
-  -- Attention on a block with text (a tag, a badge, a button): dim and restore its face; the text never resizes.
-  TweenService:Create(tagFace, loop(0.6), { BackgroundColor3 = Color3.fromRGB(190, 190, 190) }):Play()
+  -- Attention on a block with text (a badge, a button): dim and restore its face; the text never resizes.
+  TweenService:Create(badgeFace, loop(0.6), { BackgroundColor3 = Color3.fromRGB(190, 190, 190) }):Play()
+  -- Attention on a bare text tag: brighten and restore its colour. tagTop is the second value makeText returns.
+  TweenService:Create(tagTop, loop(0.6), { TextColor3 = Color3.fromRGB(255, 175, 175) }):Play() -- red tag; a gold tag tweens white -> (215, 215, 215)
   -- A HUD badge outside any ScrollingFrame may wobble instead: rotation turns its text with it.
   badge.Rotation = -8
   TweenService:Create(badge, loop(0.45), { Rotation = 8 }):Play()
@@ -346,7 +351,7 @@ end
 - One panel variant on the screen; the close is the red tile with a white X, inside the band (Dark) or straddling the corner (Light).
 - Green never on a destructive or cancel action; nothing for sale on grey; exactly one active tab, in colour; inactive tabs, owned, and claimed states grey; empty and locked slots slate.
 - Every item art has its sunburst; every price button uses the Robux glyph or a coin icon group.
-- Text: white, stroked, never boxed; white on coloured blocks; gradient-filled numbers only on the panel body or over the world; extrusion on titles, section titles, card and row names, and display numbers.
+- Text: white, stroked, never boxed; white on coloured blocks except bare red or gold card tags, never on a face of their own colour; gradient-filled numbers only on the panel body or over the world; extrusion on titles, section titles, card and row names, and display numbers.
 - Nothing with text pulses in size; ambient attention is a colour pulse or (outside scrolling lists) a rotation wobble.
 - Any badge parented to a block's base has `ZIndex` 3, above the face.
 - The panel opened with blur and pop; the screenshot shows the resting state.

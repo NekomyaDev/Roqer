@@ -170,7 +170,7 @@ The kit's numbers are the defaults. The reference games differed, so these range
 | Kind | Used for | Lip (share of height) | Corner | Outline px |
 |---|---|---|---|---|
 | button | price, action, confirm buttons | 0.12 (0.06-0.16) | 0.22 scale (0.12-0.3) | 3 |
-| chip | tabs, tags, value chips, bars | 0.12 (0.08-0.16) | 0.3 scale | 3 |
+| chip | tabs, value chips, bars | 0.12 (0.08-0.16) | 0.3 scale | 3 |
 | tile | close, gift square, HUD tiles, slots, rank badges | 0.07 (0.04-0.1) | 0.16 scale (0.12-0.2) | 4 |
 | card | product cards, rows, banners | 0.05 (min 4 px) | 10 px (8-14) | 3 |
 | band | Dark panel header band | 0.10 | 10 px | 3 |
@@ -192,8 +192,8 @@ The kit's numbers are the defaults. The reference games differed, so these range
 
 - Font: `Enum.Font.FredokaOne` through `FONT`. A cleaner geometric look may use `Font.fromEnum(Enum.Font.GothamBlack)` for the whole screen; never mix the two on one screen.
 - Every label is white with a black `UIStroke`: 2-2.5 small text, 3 buttons and headers, 3.5 panel titles. Bare glyphs: never a box, plate, or background behind a label.
-- `extrude = true` for panel titles, section titles, card and row names, and big display numbers. Descriptions, prices on buttons, tags, and labels under 18 px never extrude.
-- **Text on a coloured block face is white.** Gradient-filled numbers sit only on the panel body, a `grey`/`slate` face, a banner of a contrasting hue, or over the world (HUD readouts, totals). A cash-green amount on a green card, or gold on a yellow one, does not read.
+- `extrude = true` for panel titles, section titles, card and row names, card tags, and big display numbers. Descriptions, prices on buttons, and labels under 18 px never extrude.
+- **Text on a coloured block face is white**, with one exception: a card tag is bare red or gold text (part 2, Tag), never on a face of its own colour. Gradient-filled numbers sit only on the panel body, a `grey`/`slate` face, a banner of a contrasting hue, or over the world (HUD readouts, totals). A cash-green amount on a green card, or gold on a yellow one, does not read.
 - Display-number gradients (vertical, through `opts.gradient`):
   - cash: `ColorSequence.new(Color3.fromRGB(180, 255, 135), Color3.fromRGB(90, 215, 55))`
   - gold: `ColorSequence.new(Color3.fromRGB(255, 245, 140), Color3.fromRGB(255, 170, 0))`

@@ -48,7 +48,7 @@ The defining trait: **a sectioned catalog of studded cards and wide offer rows.*
 - Every product shows exactly ONE price button; Robux prices use the `ROBUX` glyph label, coin prices the coin icon group.
 - Cards in a section are uniform and fill the row edge to edge (3 columns). Never scale cards up to fill vertical space; with few products, the panel shrinks to the table row that fits.
 - Every card and offer row has art on a sunburst. A card with an empty art band is a defect; use `resolve_icon` for the art.
-- Tier colours, tags, owned and discount states come from the polish layer, expressed with the theme: card face colour by tier, a `chip` tag in the name band, an owned card's button `paint`ed grey reading OWNED, a struck-through old price beside the new one in the price row.
+- Tier colours, tags, owned and discount states come from the polish layer, expressed with the theme: card face colour by tier, a bare red or gold text tag in the name band's right side (the theme's Tag), an owned card's button `paint`ed grey reading OWNED, a struck-through old price beside the new one in the price row.
 - Section titles separate sections; a card row never appears without its section title when there are 2+ sections.
 - No element sits outside the panel except the Light variant's straddling title, icon, and close.
 - The catalog scrolls. Never shrink cards or rows to make a section fit without scrolling; the first section must show at least one full row at the panel's height.

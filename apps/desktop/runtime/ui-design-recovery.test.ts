@@ -114,6 +114,9 @@ test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests d
 
   // A badge on a tile's base would draw under the tile's face (ZIndex 2).
   assert.match(kit, /Set the badge's `ZIndex = 3`/);
+  // Card tags are bare coloured text in both reference games, not stickers.
+  assert.match(kit, /\*\*Tag\*\* .*: bare coloured text, no block behind it/);
+  assert.doesNotMatch(kit, /\*\*Tag\*\* .*: a `chip` block/);
 
   // Both reference games agree on these; the first draft of the guidance did not.
   const daily = await read("references/selected/modern-studs/progression-hub.md");

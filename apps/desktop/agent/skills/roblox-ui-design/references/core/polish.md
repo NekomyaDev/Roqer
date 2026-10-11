@@ -16,7 +16,7 @@ Presentation only, with `TweenService`:
 Ambient motion that looks smooth (measured in Studio on a benchmark shop):
 
 - **Never continuously scale anything that contains text.** Roblox draws text only at whole font sizes, so while a pulsing tag's body shrank smoothly from 38.1 to 35.3 px its text jumped 24 → 23 → 22 px at separate moments, and a fixed `TextSize` jumped the same way. That is the "text does not pulse with its body" effect. The short hover, press, and open pops are fine; endless pulses are not.
-- **Attention on anything with text** (a "-75%" tag, a NEW! badge, a button): pulse its colour, not its size. Tween the block's background colour between its resting colour and a dimmer one (`Color3.fromRGB(190, 190, 190)` on a white-backed gradient face) over ~0.6 s; the text never changes size. Outside any `ScrollingFrame`, a badge may instead wobble with `Rotation` ±8° over ~0.45 s: rotation turns the text with its block exactly.
+- **Attention on anything with text** (a "-75%" tag, a NEW! badge, a button): pulse its colour, not its size. Tween the block's background colour between its resting colour and a dimmer one (`Color3.fromRGB(190, 190, 190)` on a white-backed gradient face) over ~0.6 s; the text never changes size. A bare text tag with no block pulses its own text colour toward a lighter tint instead. Outside any `ScrollingFrame`, a badge may instead wobble with `Rotation` ±8° over ~0.45 s: rotation turns the text with its block exactly.
 - **Size pulses are for image-only elements** (an icon badge with no text, a glow behind something).
 - **Float images only, never text, and move at least 10 px each way** (an `Offset` of 20 px end to end) over 0.9-1.2 s. The renderer draws whole pixels: a chest floating 7 px over 1.4 s showed as a few uneven one-pixel hops. Make room for the travel inside the art's band so the art never crosses the name or price.
 
@@ -45,7 +45,7 @@ Seed the states a real shop shows, inside the layout's own cells and bands:
 ## Finishing detail
 
 - **SIM gloss:** on sticker buttons and cards, a white child frame with the same corner and a top-down transparency gradient (about 0.55 at the top, fully clear by the middle), above the gradient face and below the text. CLASSIC STUDS already carries its shine in the face gradient; never cover the stud pattern.
-- **MODERN STUDS:** tier is the card's palette colour (never grey on a shop card: grey is the owned state), tags are the theme's `chip` tag, a shop has no tabs at all (one scrolling catalog of titled sections), balances sit on the first content row, and no SIM gloss overlay: the lip and face gradient are its shine.
+- **MODERN STUDS:** tier is the card's palette colour (never grey on a shop card: grey is the owned state), tags are bare red or gold text with no sticker behind them (the theme's Tag), a shop has no tabs at all (one scrolling catalog of titled sections), balances sit on the first content row, and no SIM gloss overlay: the lip and face gradient are its shine.
 - **Outline scaling:** record each `UIStroke` with its guide thickness and multiply by `viewport height / 1080` (minimum 1) whenever the viewport changes, so the guide's values stay exact at 1080p and phones do not get heavy outlines.
 - **Text caps:** give `TextScaled` labels a `UITextSizeConstraint` so a large screen does not inflate them.
 
