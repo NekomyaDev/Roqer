@@ -34,7 +34,8 @@ The defining trait: **a sectioned catalog of studded cards and wide offer rows.*
   content:GetPropertyChangedSignal("AbsoluteSize"):Connect(sizeCells)
   sizeCells()
   ```
-- Card: the theme's card (`card` block, bands name 0.04-0.17, art 0.19-0.69 on a sunburst, price row 0.73-0.94). Price row: green price button ~0.72 card width centered, or price button 0.56 + purple gift square on its right.
+- Card: the theme's card (`card` block, bands name 0.04-0.18 extruded, art 0.18-0.75 at 0.9 of the band on a cropped wide sunburst, price row 0.77-0.96). Price row: green price button 0.74 card width centred, or price button 0.56 + purple gift square on its right. The art is the card: it should be the biggest thing on it, about half the card's height.
+- Card colours step up in value (blue, green, cyan, purple, gold, pink); never grey on a card that is for sale.
 - Wide offer row (featured pack, gamepass, starter pack): full content width, explicit pixel height = content width / 3.4 (set it in the same `sizeCells`), theme's wide offer row construction. Gamepasses and limited offers use offer rows; currency packs use cards.
 - Categories are SECTIONS in the one scrolling catalog, every category on the same canvas, in this order: featured/limited offer rows first, then currency packs, then gamepasses, then codes or other extras. A shop has NO tabs: no tab rail, no tab row, no category buttons. This overrides the polish layer's tab row.
 - Balances (when items cost soft currency): currency readouts on the first content row, left-aligned, never in the header.

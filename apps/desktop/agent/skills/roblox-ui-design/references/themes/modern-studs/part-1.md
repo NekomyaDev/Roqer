@@ -185,14 +185,14 @@ The kit's numbers are the defaults. The reference games differed, so these range
 - **gold / yellow / orange**: featured, rare, achievement, rank 1. Choose one family per screen for featured items.
 - **blue / cyan / pink**: neutral category colours (tabs, HUD tiles, section bands). One colour per destination, stable across the screen.
 - **grey**: inactive tab, owned, claimed, disabled. **slate**: empty slot, locked tile.
-- Card faces encode tier when a screen has tiers: Common grey, Uncommon green, Rare blue, Epic purple, Legendary gold, Mythic pink.
+- **Anything for sale is saturated.** A shop card or offer row is never `grey` or `slate`: grey reads as owned or disabled, and neither reference game sells on it. Shop cards step up in value through blue, green, cyan, purple, gold, pink. Collections and inventories may encode rarity: Common grey, Uncommon green, Rare blue, Epic purple, Legendary gold, Mythic pink.
 - Dark panel body: `Color3.fromRGB(13, 17, 23)` at `BackgroundTransparency = 0.4`. Light panel body: white.
 
 ## Text
 
 - Font: `Enum.Font.FredokaOne` through `FONT`. A cleaner geometric look may use `Font.fromEnum(Enum.Font.GothamBlack)` for the whole screen; never mix the two on one screen.
 - Every label is white with a black `UIStroke`: 2-2.5 small text, 3 buttons and headers, 3.5 panel titles. Bare glyphs: never a box, plate, or background behind a label.
-- `extrude = true` only for panel titles, section titles, and big display numbers. Body text, prices on small buttons, and labels under 24 px never extrude.
+- `extrude = true` for panel titles, section titles, card and row names, and big display numbers. Descriptions, prices on buttons, tags, and labels under 18 px never extrude.
 - **Text on a coloured block face is white.** Gradient-filled numbers sit only on the panel body, a `grey`/`slate` face, a banner of a contrasting hue, or over the world (HUD readouts, totals). A cash-green amount on a green card, or gold on a yellow one, does not read.
 - Display-number gradients (vertical, through `opts.gradient`):
   - cash: `ColorSequence.new(Color3.fromRGB(180, 255, 135), Color3.fromRGB(90, 215, 55))`

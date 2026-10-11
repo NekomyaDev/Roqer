@@ -216,9 +216,9 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
 - **Gift button**: `tile` purple square beside a price button, the same height, with the Gift icon at 70% of its size. Optional; when present it sits to the right of the price button with a 6 px gap.
 - **Action button**: `button` block, green for the affirmative action, purple for skip/boost, red for destructive, grey for cancel. Label only, or icon left of the label as one centred group.
 - **Card** (product, reward, collection entry): `card` block. Bands top to bottom, as shares of card height:
-  - name 0.04-0.17, white, centred (left-aligned at 0.6 width when the card has a tag);
-  - art 0.19-0.69: an `ImageLabel` (Fit, square constraint, `ZIndex` 2) on a sunburst (Fit, square, ImageTransparency 0.15, `ZIndex` 1) of the same centre and ~1.25x its size. Its soft white rays vanish above ~0.3 transparency and on light faces; on `grey` and `yellow` faces tint it with `ImageColor3 = PALETTE.gold.bottom`;
-  - price/action row 0.73-0.94: price button ~0.72 card width, or price + gift.
+  - name 0.04-0.18: white, extruded, stroke 2.5, centred (left-aligned at 0.6 width when the card has a tag);
+  - art 0.18-0.75: a transparent holder centred at (0.5, 0.465), `Size = UDim2.fromScale(1, 0.57)` with a height-dominant square constraint. In it, the art `ImageLabel` (Fit, `Size = UDim2.fromScale(0.9, 0.9)`, `ZIndex` 2) on the sunburst (`ScaleType.Crop`, `Size = UDim2.fromScale(1.7, 1)`, centred, ImageTransparency 0.15, `ZIndex` 1). The crop spreads the rays across the card's width while keeping them inside the art band, clear of the name and the price. On `yellow` and `gold` faces tint the sunburst with `ImageColor3 = PALETTE.gold.bottom` so the rays still show;
+  - price/action row 0.77-0.96: price button `Size = UDim2.fromScale(0.74, 0.19)`, anchored top-centre at (0.5, 0.77), or price + gift.
   Bands never overlap; with no art, the card shrinks rather than leaving an empty band.
 - **Tag** ("NEW!", "BEST", "-50%", "LIMITED"): a `chip` block, red or gold, inside the card's top-right corner in the name band (x 0.64-0.96, y 0.03-0.17), white text stroke 2. At most one per card.
 - **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. A featured banner may use the sparse stud texture `102751665779866` on its face and an extruded gold display number. A banner always sells a real product.
@@ -315,7 +315,7 @@ end
 - Never put a scale fraction in an offset slot: `UDim2.new(1, -2 * PAD, 1 - HEADER_H, -16 - PAD)` keeps scale and pixels in their own slots.
 - `TextScaled` caps near 100 px; for bigger display text keep `TextScaled` and set `RichText` with `<font size="N">`.
 - Interactive blocks are at least 44 px tall.
-- Nothing inside a `ScrollingFrame` is rotated. Gloss or streaks, when wanted, are a white Frame child of a face with a transparency `UIGradient`, never a rotated Frame.
+- Nothing inside a `ScrollingFrame` is rotated. Do not add gloss or streak overlays to blocks: the lip and face gradient are the shine. Tried on a live header band, a white streak overlay beside the title row made the UI audit report the title and close text as crossing its edge.
 - `UICorner` rounds an `ImageLabel`'s image, so the stud tile stays inside the rounded face. If a screenshot ever shows stud pixels past a corner, raise the face's `ImageTransparency` by 0.1 and report it.
 - No visible element inside the top-left 350×70 Core UI keep-out; elements near the top-left anchor their y at a 70 px offset.
 - Panel height stays within [0.40, 0.66] of the screen unless the selected body says otherwise, and content ends within ~12% of the panel bottom.
