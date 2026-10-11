@@ -390,4 +390,4 @@ end
 
 ## Layout bodies
 
-Load exactly one with this theme: `references/selected/modern-studs/<layout>.md`. Slugs: `shop-grid`, `centered-dialog`, `fullscreen-landing`, `admin-control-panel`, `hud-zone-system`, `select-screen`, `grid-inventory`, `vertical-navigation-sidebar`, `progression-hub`, `stat-leaderboard`, `incremental-clicker`, `notification-alert`, `wheel-spin`, `vertical-reel-roll`. MODERN STUDS has no wheel or reel template of its own: those two bodies route to the CLASSIC STUDS templates.
+Load exactly one with this theme: `references/selected/modern-studs/<layout>.md`. Slugs: `shop-grid`, `centered-dialog`, `fullscreen-landing`, `admin-control-panel`, `hud-zone-system`, `select-screen`, `grid-inventory`, `vertical-navigation-sidebar`, `progression-hub`, `stat-leaderboard`, `incremental-clicker`, `notification-alert`, `wheel-spin`, `vertical-reel-roll`. `wheel-spin` routes to the MODERN STUDS wheel template; MODERN STUDS has no reel template, so `vertical-reel-roll` routes to the CLASSIC STUDS reel.

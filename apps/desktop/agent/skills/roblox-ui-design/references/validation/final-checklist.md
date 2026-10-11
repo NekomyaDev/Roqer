@@ -64,10 +64,10 @@ Use after implementation.
 - [ ] One panel variant on the screen (Dark band or Light straddling title); close is the red tile with a white X.
 - [ ] No stud pixels outside a rounded corner in the screenshot.
 - [ ] Every item art sits on the sunburst; Robux prices use the text glyph.
-- [ ] Exactly one active tab in colour, the rest grey; tab rails sit outside the panel edge.
+- [ ] Exactly one active tab at full colour and width, the rest dimmed in their own colours; tab rails sit outside the panel edge, on the right by default.
 - [ ] Panels opened with blur and pop; HUD, sidebar, clicker, and toast screens did not blur.
 - [ ] Only part 1's asset IDs, `resolve_icon` results, or verified project art; no other game's sprites.
-- [ ] A wheel or reel used the CLASSIC STUDS template unchanged, and the reply said so.
+- [ ] A wheel used `templates/modern-studs/wheel-spin.lua` with only `CONFIG` changed; a reel used the CLASSIC STUDS template unchanged, and the reply said so.
 
 ## Validation
 - [ ] `inspect_ui` audit ran on the live client after the last interface change and reported no problems (Roqer will not verify the run otherwise).

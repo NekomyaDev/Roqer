@@ -174,6 +174,7 @@ test("Roblox UI skill exposes selective resources and exact theme-specific templ
     assert.ok(links.includes(`references/layouts/${layout}.md`), layout);
   }
   assert.ok(links.includes("templates/studs/wheel-spin.lua"));
+  assert.ok(links.includes("templates/modern-studs/wheel-spin.lua"));
   assert.ok(!entrypoint.content.includes("AGENT_PROMPT.md"));
   // One layout, chosen by meaning, and a theme only when there is one to use:
   // forcing SIM or STUDS onto a plain request is what produced themed screens
@@ -202,6 +203,8 @@ test("Roblox UI skill exposes selective resources and exact theme-specific templ
     ["templates/studs/wheel-spin.lua", "d06fa5796c06b4937d795369b113d1a1fecbee5f7e96528375473c3ce0d0b2d8"],
     ["templates/sim/vertical-reel-roll.lua", "a75c7d09048ffd7589b057e5d443287b94b2d200320115271233041b85bbe509"],
     ["templates/studs/vertical-reel-roll.lua", "48657d9da140a61f7d7b20d5e6c3c994fe1976a66f3b94adace52501df253b37"],
+    // Repository-authored: the CLASSIC STUDS wheel with the MODERN STUDS kit as its theme adapter.
+    ["templates/modern-studs/wheel-spin.lua", "5e5ed53ff659d791c82d07a252519fee9a012e2c166225d5588662af3adab05e"],
   ]);
   const bodies = new Map<string, string>();
   for (const [resource, expectedHash] of expectedHashes) {
@@ -218,6 +221,19 @@ test("Roblox UI skill exposes selective resources and exact theme-specific templ
   assert.match(bodies.get("templates/sim/wheel-spin.lua") ?? "", /makeStickerButton/);
   assert.doesNotMatch(bodies.get("templates/sim/wheel-spin.lua") ?? "", /makeStudButton/);
   assert.match(bodies.get("templates/studs/wheel-spin.lua") ?? "", /makeStudButton/);
+  const modernWheel = (bodies.get("templates/modern-studs/wheel-spin.lua") ?? "").replace(/\r\n/g, "\n");
+  assert.match(modernWheel, /local function makeSurface/);
+  assert.doesNotMatch(modernWheel, /makeStudButton|makeStickerButton/);
+  // Everything but the theme adapter is the CLASSIC wheel: the same wedge
+  // geometry, chrome and spin, so the two cannot drift apart unnoticed.
+  const classicWheel = (bodies.get("templates/studs/wheel-spin.lua") ?? "").replace(/\r\n/g, "\n");
+  for (const shared of [
+    classicWheel.slice(0, classicWheel.indexOf("-- THEME BUTTONS:")),
+    classicWheel.slice(classicWheel.indexOf("local wheelFrame ="), classicWheel.indexOf("makeLabel(wheelFrame, CONFIG.spinsLeftText")),
+    classicWheel.slice(classicWheel.indexOf("-- ANIMATION (fixed)")),
+  ]) {
+    assert.ok(shared.length > 1000 && modernWheel.includes(shared), "the MODERN STUDS wheel diverged from the CLASSIC wheel outside its theme adapter");
+  }
   assert.notEqual(
     bodies.get("templates/sim/vertical-reel-roll.lua"),
     bodies.get("templates/studs/vertical-reel-roll.lua"),

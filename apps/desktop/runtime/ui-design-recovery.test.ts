@@ -54,10 +54,11 @@ test("the MODERN STUDS theme ships complete, labelled as authored, with only vet
     assert.match(source, /Repository-authored/, `modern-studs/${layout} must not pass as recovered guidance`);
     bodies.push(source);
   }
-  for (const layout of ["wheel-spin", "vertical-reel-roll"]) {
-    const source = await read(`references/selected/modern-studs/${layout}.md`);
-    assert.match(source, new RegExp(`templates/studs/${layout}\\.lua`), `${layout} must route to the STUDS template`);
-  }
+  // The wheel has its own MODERN STUDS template; the reel still borrows the CLASSIC one.
+  const wheelRoute = await read("references/selected/modern-studs/wheel-spin.md");
+  assert.match(wheelRoute, /templates\/modern-studs\/wheel-spin\.lua/, "wheel-spin must route to the MODERN STUDS template");
+  const reelRoute = await read("references/selected/modern-studs/vertical-reel-roll.md");
+  assert.match(reelRoute, /templates\/studs\/vertical-reel-roll\.lua/, "vertical-reel-roll must route to the STUDS template");
 
   const kit = parts[1];
   assert.match(kit, /local function makeSurface/);

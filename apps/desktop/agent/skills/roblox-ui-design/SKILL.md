@@ -25,7 +25,7 @@ The host marks clear UI-creation requests so this entrypoint is not optional. Mi
    - `references/core/polish.md`, except for `wheel-spin` and `vertical-reel-roll`
    - with **SIM**: `references/themes/recovered/sim-1.md`, `sim-2.md`, `sim-3.md`, and `references/selected/sim/<layout>.md`
    - with **CLASSIC STUDS**: `references/themes/recovered/studs-1.md`, `studs-2.md`, and `references/selected/studs/<layout>.md`
-   - with **MODERN STUDS**: `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md`; for `wheel-spin` and `vertical-reel-roll` that body routes to the CLASSIC STUDS template
+   - with **MODERN STUDS**: `references/themes/modern-studs/part-1.md`, `part-2.md`, and `references/selected/modern-studs/<layout>.md`; `wheel-spin` has its own MODERN STUDS template, and for `vertical-reel-roll` that body routes to the CLASSIC STUDS template
    - with no packaged theme: the chosen generic layout reference instead of recovered theme/selected-body resources
    - for `wheel-spin` or `vertical-reel-roll`: also load the specialized contract and exact `(theme, layout)` Lua template in that same call.
 3. Recovered theme parts are authoritative for construction/style; the recovered selected body is authoritative for geometry/composition. MODERN STUDS theme parts and selected bodies hold the same authority for that theme. Do not also load the short generic layout reference when a selected body is active.
@@ -97,9 +97,9 @@ Current Roqer system/developer instructions and current core execution reference
 |---|---|---|
 | SIM | [contract](references/specialized/wheel-spin.md), [template](templates/sim/wheel-spin.lua) | [contract](references/specialized/vertical-reel-roll.md), [template](templates/sim/vertical-reel-roll.lua) |
 | CLASSIC STUDS | [contract](references/specialized/wheel-spin.md), [template](templates/studs/wheel-spin.lua) | [contract](references/specialized/vertical-reel-roll.md), [template](templates/studs/vertical-reel-roll.lua) |
-| MODERN STUDS | no template: [route](references/selected/modern-studs/wheel-spin.md) to the CLASSIC STUDS wheel | no template: [route](references/selected/modern-studs/vertical-reel-roll.md) to the CLASSIC STUDS reel |
+| MODERN STUDS | [contract](references/specialized/wheel-spin.md), [template](templates/modern-studs/wheel-spin.lua) | no template: [route](references/selected/modern-studs/vertical-reel-roll.md) to the CLASSIC STUDS reel |
 
-If a specialized layout's theme is not known from the project/request, ask once before mutating Studio. Never substitute a theme except the documented MODERN STUDS → CLASSIC STUDS route above, never redraw the geometry, and never move the managed prefix. Customize only documented `CONFIG` values and preserve protected template bytes exactly.
+If a specialized layout's theme is not known from the project/request, ask once before mutating Studio. Never substitute a theme except the documented MODERN STUDS → CLASSIC STUDS reel route above, never redraw the geometry, and never move the managed prefix. Customize only documented `CONFIG` values and preserve protected template bytes exactly.
 
 ## Validation and stopping
 

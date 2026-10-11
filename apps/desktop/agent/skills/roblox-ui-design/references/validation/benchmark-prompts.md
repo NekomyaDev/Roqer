@@ -78,10 +78,10 @@ Use these to test layout classification and implementation reliability. For each
     - Expected: `centered-dialog`, MODERN STUDS, panel built with `scrolls = false`, blocks on the dialog's slot table (chips ~0.15, bar ~0.115, buttons 0.32 x 0.15 of the panel), no overflow.
 
 24. "Make a stud themed pet index with rarity tabs and 100 collectables."
-    - Expected: `grid-inventory`, MODERN STUDS (the default stud theme), rarity tab rail outside the panel's left edge.
+    - Expected: `grid-inventory`, MODERN STUDS (the default stud theme), rarity tab rail outside the panel's right edge, inactive tabs dimmed in their own colours.
 
 25. "Make a modern studs lucky wheel."
-    - Expected: `wheel-spin`, CLASSIC STUDS template unchanged, reply says MODERN STUDS has no wheel template.
+    - Expected: `wheel-spin`, `templates/modern-studs/wheel-spin.lua` with only `CONFIG` changed: rounded lipped blocks, a gold SPIN, green buy packs with the Robux glyph, a red tile close.
 
 26. "Make a classic square stud shop with 6 coin packs."
     - Expected: `shop-grid`, CLASSIC STUDS (explicit classic cue), recovered STUDS body.

@@ -1,6 +1,6 @@
 # MODERN STUDS selected body: wheel-spin
 
-> Repository-authored. MODERN STUDS has no wheel template of its own.
+> Repository-authored. The MODERN STUDS wheel is its own template, built from the CLASSIC STUDS wheel with the MODERN STUDS surface kit in place of its buttons and labels.
 
 # SELECTED LAYOUT GUIDE (loaded via layout="wheel-spin")
 
@@ -8,7 +8,7 @@ For: prize wheel / lucky wheel / spin-to-win screens: a radial wheel of 8 prize 
 
 ## Route
 
-- A wheel is a specialized template layout, and the maintained template exists only for SIM and CLASSIC STUDS. With MODERN STUDS active, deploy the **CLASSIC STUDS** wheel exactly: load `references/specialized/wheel-spin.md` and `templates/studs/wheel-spin.lua` in the same route call, and follow that contract.
-- Customize only the documented `CONFIG` values. Never restyle the template with the modern surface kit, redraw its geometry, or move its managed prefix: its bytes are protected.
-- Tell the user once, in the run's reply, that the wheel uses the CLASSIC STUDS construction because MODERN STUDS has no wheel template yet.
-- The rest of the screen (a HUD tile that opens the wheel, a confirmation) still uses MODERN STUDS.
+- A wheel is a specialized template layout. With MODERN STUDS active, deploy `templates/modern-studs/wheel-spin.lua` exactly: load `references/specialized/wheel-spin.md` and that template in the same route call, and follow that contract.
+- Customize only the documented `CONFIG` values. Never redraw its geometry, rebuild its blocks by hand, or move its managed prefix: its bytes are protected.
+- The template already uses the theme's blocks and text; do not restyle it further with the rest of the kit.
+- The rest of the screen (a HUD tile that opens the wheel, a confirmation) uses the MODERN STUDS theme parts as usual.

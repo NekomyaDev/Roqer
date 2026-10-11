@@ -2,12 +2,13 @@
 
 ## Canonical implementation availability
 
-This package contains exact canonical templates for both themes:
+This package contains an exact template for each theme:
 
 - SIM: `templates/sim/wheel-spin.lua`
-- STUDS: `templates/studs/wheel-spin.lua`
+- CLASSIC STUDS: `templates/studs/wheel-spin.lua`
+- MODERN STUDS: `templates/modern-studs/wheel-spin.lua` (repository-authored from the CLASSIC STUDS template; see its adapter below)
 
-Roqer has no server-side `layoutTemplate` operation. Load the exact body matching the selected theme and edit only `CONFIG`. The two files are distinct; never substitute one theme's body for the other.
+Roqer has no server-side `layoutTemplate` operation. Load the exact body matching the selected theme and edit only `CONFIG`. The files are distinct; never substitute one theme's body for another.
 
 ## Contract
 
@@ -84,6 +85,17 @@ All exact geometry stays in template tables.
 - SPIN gold;
 - close bright red;
 - wedge accents bright saturated.
+
+### MODERN STUDS
+- the same wheel as CLASSIC STUDS: identical managed prefix, `CONFIG` API, chrome assets, wedge geometry, sounds and spin animation;
+- every block is a MODERN STUDS `makeSurface` block (rounded, outlined, lipped, studded face) and every label a `makeText` label. The template inlines that kit from `themes/modern-studs/part-1.md`, so a change to the kit is a template change with a new hash;
+- buy packs: green `button` blocks with the price as the Robux text glyph (`ROBUX .. " 99"`); the `+ N Spins` caption sits under each block, clear of its edge;
+- SPIN: a larger gold `button`, 0.09 x 0.052 of the screen, at least 44 px tall;
+- close: the theme's red `tile` with a white X;
+- open button: a gold `tile` with the wheel icon and the timer as a red `chip` on its bottom edge;
+- the spins-left line is extruded, and the free-spin time is green;
+- blocks are named `Spin`, `Close`, `BuyPack1`-`BuyPack3` and `OpenWheel`.
+- Checked live: spin, close and reopen work. The UI audit reports the 16 wedge labels as covered by the divider overlay, as it does for the CLASSIC STUDS wheel; that overlay is transparent between its lines, so those reports are expected.
 
 ## Runtime boundary
 

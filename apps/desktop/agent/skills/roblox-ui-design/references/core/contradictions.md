@@ -61,7 +61,7 @@ MODERN STUDS is repository-authored, not recovered, and deliberately departs fro
 Normalized policy:
 - each theme's rules apply only while that theme is active; never mix the constructions on one screen;
 - MODERN STUDS is the default for new stud screens; an existing CLASSIC STUDS screen stays CLASSIC STUDS on edit, and restyling it to MODERN STUDS is a structural redesign the user must ask for;
-- MODERN STUDS has no wheel or reel template, so those layouts deploy the CLASSIC STUDS template unchanged and the run says so.
+- MODERN STUDS has its own wheel template (`templates/modern-studs/wheel-spin.lua`) but no reel template, so a MODERN STUDS reel deploys the CLASSIC STUDS template unchanged and the run says so.
 
 ## MODERN STUDS vs polish layer
 

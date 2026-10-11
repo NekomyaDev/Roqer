@@ -2,7 +2,7 @@
 
 Summary only. Build from `themes/modern-studs/part-1.md`, `themes/modern-studs/part-2.md`, and `selected/modern-studs/<layout>.md`; this page never replaces them. Repository-authored from a reference study of two published games, and benchmarked in Studio on a shop and a rebirth dialog.
 
-MODERN STUDS is the default stud theme: every stud, studded, or blocky request uses it. CLASSIC STUDS (`themes/studs.md`) is for explicit classic requests, edits of screens built with it, and the wheel and reel templates.
+MODERN STUDS is the default stud theme: every stud, studded, or blocky request uses it. CLASSIC STUDS (`themes/studs.md`) is for explicit classic requests, edits of screens built with it, and the reel template.
 
 ## Identity
 
@@ -34,4 +34,4 @@ MODERN STUDS is the default stud theme: every stud, studded, or blocky request u
 
 ## Specialized layouts
 
-MODERN STUDS has no wheel or reel template: `wheel-spin` and `vertical-reel-roll` deploy the CLASSIC STUDS template unchanged, and the run says so once.
+`wheel-spin` deploys the MODERN STUDS wheel template (`templates/modern-studs/wheel-spin.lua`). MODERN STUDS has no reel template: `vertical-reel-roll` deploys the CLASSIC STUDS template unchanged, and the run says so once.
