@@ -10,7 +10,7 @@ Presentation only, with `TweenService`:
 
 - **Open:** a `UIScale` on the panel tweens 0.85 → 1 (`Back`, `Out`, ~0.25 s) each time the screen is shown.
 - **Buttons:** hover 1.06, press 0.94, release back to 1, through a `UIScale` child (~0.12 s). `AutoButtonColor = false`.
-- **Cards:** hover 1.03. On first show and on every tab switch, cards pop in one after another (≤0.03 s apart, the whole group ≤0.4 s).
+- **Cards and rows:** no hover scale. A card or row placed edge to edge in a scrolling list has no room to grow: at 1.03 a full-width offer row is wider than the scroll window, so it pokes past the panel's sides and gets clipped (seen in a benchmark shop). Hover feedback on a card lives on its buy button. On first show and on every tab switch, cards still pop in one after another (≤0.03 s apart, the whole group ≤0.4 s), growing up to their resting size, never past it.
 - **Ambient, two or three at most:** featured art floats, an alert badge or discount tag draws attention, a shine sweeps across the featured buy button (`UIGradient.Offset`). Each is ONE tween built with `TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)`, never a loop that re-creates tweens.
 
 Ambient motion that looks smooth (measured in Studio on a benchmark shop):

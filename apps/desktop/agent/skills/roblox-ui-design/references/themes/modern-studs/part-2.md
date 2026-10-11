@@ -225,7 +225,7 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - Colour by meaning: red `Color3.fromRGB(255, 60, 60)` for NEW!, HOT, OP! and discounts; the gold gradient for BEST, LIMITED and MOST POPULAR.
   - The thick black stroke carries it on any face, but never put a tag on a face of its own colour: on a red or pink card use the gold tag, on a gold or yellow card use the red one.
   - Inside a scrolling list a tag stays upright. A HUD offer outside any scrolling list may tilt its tag to `Rotation = -10`, as one reference game does.
-- **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. A featured banner may use the sparse stud texture `102751665779866` on its face and an extruded gold display number. A banner always sells a real product.
+- **Wide offer row / featured banner**: a `card` block spanning the content width, aspect 3.2-3.6. Art on a sunburst at the left (square, ~0.85 of row height), name + one description line in the middle, price button bottom-right, optional tag top-right. It uses the same dense stud face as every other block: the sparse texture tiled across a banner came out as huge, patchy studs in a benchmark shop. A featured banner may carry an extruded gold display number. A banner always sells a real product.
 - **Section title**: a full-width Frame 40-48 px tall in the section's colour, faded at both ends, with an extruded title centred on it:
 
   ```lua
@@ -252,7 +252,10 @@ All of these are `makeSurface` blocks. Text, art, and buttons are children of a 
   - size: rail width 0.2 of panel width; tabs 0.11 of rail height, ~2% gaps;
   - state: EXACTLY ONE tab in its category colour (the active one, matching the visible content), every other tab `grey`.
   Use the rail only when the panel is at most 0.55 screen width, so it stays on screen.
-- **HUD tile**: a `tile` block, roughly square (aspect 0.97). Icon (Fit, square) centred at y 0.38 at 0.62 of the tile's height; label at y 0.84, 0.24 tall, stroke 2.5; the bands never overlap. Optional badge: a red `chip` parented to the tile base (not the face), straddling its top-right corner at (0.86, 0.06), 0.62 x 0.24 of the tile, with "!" or "NEW!". Set the badge's `ZIndex = 3`: the face is `ZIndex` 2, so a badge left at the default 1 draws under the face and loses its lower half. The references draw the icon larger (~0.77 of the tile) with the label over its foot; this kit keeps the label clear of the icon's box, because text partly over an image is what the UI audit reports.
+- **HUD tile**: a `tile` block, roughly square (aspect 0.97). Icon (Fit, square) centred at y 0.38 at 0.62 of the tile's height; label at y 0.84, 0.24 tall, stroke 2.5; the bands never overlap. The references draw the icon larger (~0.77 of the tile) with the label over its foot; this kit keeps the label clear of the icon's box, because text partly over an image is what the UI audit reports.
+  - Optional badge, straddling the top-right corner as one reference game's alert does: a red `chip` parented to the tile's FACE, `AnchorPoint` (0.5, 0.5), `ZIndex = 4` so it draws above the icon and label. "NEW!": `Size = UDim2.fromScale(0.46, 0.18)` at (0.84, 0). "!": `Size = UDim2.fromScale(0.28, 0.28)` at (0.94, 0.08). Its text is `makeText` at 0.82 x 0.8, stroke 2.
+  - Parent it to the face, never the base. On the base, the badge's text is partly on the face and partly off it, which the UI audit reports; a benchmark HUD then pushed its badges into the tile and shrank the icons to make room. Never shrink or move the icon for a badge.
+  - These sizes keep the badge's text above and right of the icon's box, and the part that hangs outside the tile stays inside a ~1% grid gap (checked live: audit clean, with a badge on a tile in either column). Do not enlarge it or move it further out, or it lands on the next tile.
 - **HUD offer** (the right-column deals both reference games show): NOT a block. Art (Fit, square) on a `ScaleType.Fit` sunburst ~1.3x its size, the offer's name as a stroked label under the art, and the price as green stroked text with the Robux glyph (`ROBUX .. " 99"`, `Color3.fromRGB(0, 255, 8)`, stroke 2.5) above or below the name. The whole offer is one transparent `ImageButton` (no image, `BackgroundTransparency = 1`) holding these, stacked in the right zone. Keep the text in its own band, clear of both the art's and the sunburst's boxes.
 - **Currency readout**: no plate. A transparent row: icon (Fit, square, the row's full height) then the value as a left-aligned label with stroke 3 and a display-number gradient (cash, gold, gem). Each currency has its own icon and gradient.
 - **Value chip** (multipliers, "x1.5 Money"): a `chip` block with one centred label. A before/after pair is two chips with a bare stroked ">" between them, never an arrow drawn from Frames.
@@ -311,7 +314,7 @@ end
 - Close buttons call `closePanel`.
 - HUD, sidebar, clicker, and toast layouts never blur: the world stays sharp behind them.
 - Hiding the HUD while a panel is open is allowed only when the user asks for it.
-- Hover and press follow the polish layer through a `UIScale` on the block's base (hover 1.06, press 0.94). Nothing tweens `Size` or `Position` of anything a layout places.
+- Hover and press follow the polish layer through a `UIScale` on a button's base (hover 1.06, press 0.94). Buttons and HUD tiles scale on hover; cards, offer rows, and banners do not, because in a scrolling list they have no room to grow. Nothing tweens `Size` or `Position` of anything a layout places.
 - Ambient motion follows the polish layer's smooth-motion rules. With this kit:
 
   ```lua
@@ -353,7 +356,7 @@ end
 - Every item art has its sunburst; every price button uses the Robux glyph or a coin icon group.
 - Text: white, stroked, never boxed; white on coloured blocks except bare red or gold card tags, never on a face of their own colour; gradient-filled numbers only on the panel body or over the world; extrusion on titles, section titles, card and row names, and display numbers.
 - Nothing with text pulses in size; ambient attention is a colour pulse or (outside scrolling lists) a rotation wobble.
-- Any badge parented to a block's base has `ZIndex` 3, above the face.
+- Every badge is parented to its block's face with `ZIndex` 4, its text clear of the icon; icons keep their full size.
 - The panel opened with blur and pop; the screenshot shows the resting state.
 - Asset IDs are only the ones in part 1, `resolve_icon` results, or verified project art.
 - No overlap, no text crossing a sibling's edge, no zero-size element, all content hardcoded.

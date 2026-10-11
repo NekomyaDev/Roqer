@@ -112,8 +112,13 @@ test("MODERN STUDS dialogs never scroll, shops have no tabs, and stud requests d
 
   assert.match(kit, /VerticalScrollBarInset = Enum\.ScrollBarInset\.Always/);
 
-  // A badge on a tile's base would draw under the tile's face (ZIndex 2).
-  assert.match(kit, /Set the badge's `ZIndex = 3`/);
+  // A badge on a tile's base put its text half on the face and half off it,
+  // so a benchmark HUD pushed its badges inward and shrank the icons.
+  assert.match(kit, /a red `chip` parented to the tile's FACE, `AnchorPoint` \(0\.5, 0\.5\), `ZIndex = 4`/);
+  assert.match(kit, /Never shrink or move the icon for a badge/);
+  assert.doesNotMatch(kit, /parented to the tile base/);
+  const sidebar = await read("references/selected/modern-studs/vertical-navigation-sidebar.md");
+  assert.match(sidebar, /a red `chip` parented to the button's face/);
   // Card tags are bare coloured text in both reference games, not stickers.
   assert.match(kit, /\*\*Tag\*\* .*: bare coloured text, no block behind it/);
   assert.doesNotMatch(kit, /\*\*Tag\*\* .*: a `chip` block/);
@@ -198,6 +203,16 @@ test("themed screens get the polish layer's motion but still wire no game behavi
   assert.match(polish, /Nothing inside a `ScrollingFrame` is rotated/);
   assert.match(polish, /small upright sticker/);
   assert.doesNotMatch(polish, /rotated sticker|floats or rocks/);
+
+  // A full-width offer row scaled to 1.03 on hover grew wider than its scroll
+  // window and poked past the shop's sides. Only buttons and HUD tiles grow.
+  assert.match(polish, /\*\*Cards and rows:\*\* no hover scale/);
+  assert.doesNotMatch(polish, /\*\*Cards:\*\* hover 1\.03/);
+  const modernKit = await read("references/themes/modern-studs/part-2.md");
+  assert.match(modernKit, /Buttons and HUD tiles scale on hover; cards, offer rows, and banners do not/);
+  // The sparse stud texture tiled across a banner came out as huge, patchy studs.
+  const modernTheme = `${await read("references/themes/modern-studs/part-1.md")}\n${modernKit}`;
+  assert.doesNotMatch(modernTheme, /102751665779866/);
 
   const entrypoint = await read("SKILL.md");
   assert.match(entrypoint, /`references\/core\/polish\.md`, except for `wheel-spin` and `vertical-reel-roll`/);

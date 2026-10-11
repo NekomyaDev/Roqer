@@ -211,7 +211,6 @@ Use these exact IDs for these roles. Everything else comes from `resolve_icon` (
 | Role | Image ID | Notes |
 |---|---|---|
 | Stud texture, every surface (default) | `rbxassetid://92521981645530` | Embossed rounded squares, 4 x 4 per tile. Shared with CLASSIC STUDS. |
-| Sparse stud texture, wide featured banners | `rbxassetid://102751665779866` | ImageTransparency ~0.7 on a banner face, `TileSize` ~2x the banner height. |
 | Sunburst under item art | `rbxassetid://91084849147872` | ImageTransparency 0.15 (its soft white rays vanish above ~0.3), below the art. On cards: `ScaleType.Crop`, 1.7x as wide as the art band (part 2, Card). Elsewhere (offer rows, dialog and HUD tiles): `ScaleType.Fit`, ~1.25x the art. |
 
 **Public Creator Store alternatives for the stud texture.** Use only when the user asks for chunkier studs. These are public decals; the IMAGE ID goes in `Image` (core assets rule). Each image was matched to its decal by creator, upload date, and thumbnail. Confirm with `get_asset_details` on the decal (its `asset.textureId` must equal the image ID) before first use in a project.
