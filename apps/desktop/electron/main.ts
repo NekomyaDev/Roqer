@@ -133,6 +133,8 @@ let shutdownFinishedForQuit = false;
  */
 const trustedSenders = new Set<number>();
 const runSessions = new Map<string, RunSession>();
+/** The chat each live run belongs to, so a compact never touches a conversation a run owns. */
+const runChats = new Map<string, string>();
 const runExecutions = new Set<Promise<unknown>>();
 const pendingRuns = new PendingRuns();
 /** Calls the person back to the window while a run waits on them. Null while there is no window. */
@@ -1994,12 +1996,14 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     });
 
     runSessions.set(runId, session);
+    runChats.set(runId, request.chatId);
     // Driven from the session map rather than from one run, so a second run
     // finishing does not report the app idle while the first is still going.
     presence.setRunning(true);
     executionStarted = true;
     const execution = session.execute().finally(async () => {
       runSessions.delete(runId);
+      runChats.delete(runId);
       // However the run ended, it waits on no one now.
       runAttention?.endRun(runId);
       // The saved chat refers to them from here on; the picture store's grace
@@ -2032,6 +2036,23 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
       }
     }
   }
+}
+
+/**
+ * Forget the provider conversations a chat keeps, after the user compacts it.
+ *
+ * The next run then starts from the compacted transcript instead of a provider
+ * that still holds everything. Refused while a run is working on the chat: that
+ * run owns the conversation until it ends, and would put the full history back.
+ */
+function compactChatSessions(event: IpcMainInvokeEvent, chatId: unknown): boolean {
+  if (!isTrusted(event.sender) || typeof chatId !== "string" || chatId === "" || chatId.length > 1_000) return false;
+  if ([...runChats.values()].includes(chatId)) return false;
+  claudeSessions.drop(chatId);
+  antigravitySessions.drop(chatId);
+  codexThreads.drop(chatId);
+  customConversations.drop(chatId);
+  return true;
 }
 
 function respondToRun(event: IpcMainInvokeEvent, payload: unknown): boolean {
@@ -2508,6 +2529,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("previews:model", loadModelPreview);
   ipcMain.handle("previews:picture", loadEvidencePicture);
   ipcMain.handle("run:start", startRun);
+  ipcMain.handle("chat:compact", compactChatSessions);
   ipcMain.handle("run:respond", respondToRun);
   ipcMain.handle("run:answer", answerRun);
   ipcMain.handle("run:steer", steerRun);

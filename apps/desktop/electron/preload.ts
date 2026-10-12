@@ -244,6 +244,14 @@ const customProviders = {
   },
 };
 
+const chats = {
+  /**
+   * Forget the provider conversations a chat keeps, after a manual compact.
+   * False when a run is working on the chat right now.
+   */
+  compact: (chatId: string): Promise<boolean> => ipcRenderer.invoke("chat:compact", chatId),
+};
+
 contextBridge.exposeInMainWorld("workbenchDesktop", {
   storage: {
     load: () => ipcRenderer.invoke("workspace:load"),
@@ -339,6 +347,7 @@ contextBridge.exposeInMainWorld("workbenchDesktop", {
   blender,
   rojo,
   runs,
+  chats,
   previews: {
     /** A Blender result's 3D preview, by the opaque id its evidence carries. */
     loadModel: async (id: string): Promise<ModelPreviewResult> => {

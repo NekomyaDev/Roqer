@@ -575,6 +575,11 @@ button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-
 .context-advice button { height: 28px; padding: 0 10px; color: var(--action-ink); background: var(--action); border: 0; border-radius: 7px; font-size: var(--type-meta); font-weight: var(--weight-medium); }
 .context-advice button:hover { background: var(--action-hover); }
 .context-advice button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.context-compact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; color: var(--ink-secondary); font-size: var(--type-meta); line-height: 1.5; border-top: 1px solid var(--border); }
+.context-compact button { flex: none; height: 28px; padding: 0 10px; color: var(--action-ink); background: var(--action); border: 0; border-radius: 7px; font-size: var(--type-meta); font-weight: var(--weight-medium); }
+.context-compact button:hover:not(:disabled) { background: var(--action-hover); }
+.context-compact button:disabled { opacity: 0.45; cursor: default; }
+.context-compact button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .context-panel .metadata-list .context-model { font-family: inherit; }
 .context-footnote { margin: 0; color: var(--muted); font-size: var(--type-meta); line-height: 1.5; }
 .stop-button { display: flex; flex: none; align-items: center; gap: 7px; height: 36px; padding: 0 13px; color: var(--danger); background: var(--danger-soft); border: 1px solid var(--danger-border); border-radius: 10px; font-size: var(--type-label); font-weight: var(--weight-medium); }

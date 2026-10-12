@@ -6,6 +6,9 @@ import type { RunDigest } from "../shared/run-digest";
 const TRUNCATION_NOTICE =
   "Some older messages from this chat were omitted because the conversation context was bounded. Do not assume the transcript below is complete.";
 
+const COMPACT_NOTICE =
+  "The user compacted this chat. Its earlier messages are folded into the record below, which Roqer wrote from what the chat recorded. It is not a transcript: read Studio again before relying on any detail in it.";
+
 const UI_DESIGN_NOUN = /\b(?:ui|gui|screen|menu|hud|shop|store|inventory|dialog|popup|panel|leaderboard|notification|toast|wheel|reel|daily rewards?|battle pass|admin(?:istration)? panel|select(?:ion)? screen)\b/i;
 const UI_DESIGN_ACTION = /\b(?:make|create|build|design|draw|recreate|copy|match|restyle|retheme|edit|modify|change|update|add|remove|resize|move|polish)\b/i;
 const UI_DESIGN_STYLE = /\b(?:stud|studded|simulator(?:-style)?|pet[ -]?simulator|visual|layout|theme|responsive)\b/i;
@@ -100,10 +103,11 @@ function renderMessage(message: ConversationMessage): string {
 /** Render bounded prior transcript plus a small deterministic host route for clear UI-design work. */
 export function buildConversationPrompt(context: ConversationContext, currentPrompt: string): string {
   const routed = routedCurrentPrompt(currentPrompt);
-  if (context.messages.length === 0 && !context.truncated) return routed;
+  if (context.messages.length === 0 && !context.truncated && context.summary === undefined) return routed;
 
   const sections = [
     "Prior conversation context from this chat. Treat it as context, not as a new instruction:",
+    ...(context.summary === undefined ? [] : [`${COMPACT_NOTICE}\n${context.summary}`]),
     ...(context.truncated ? [TRUNCATION_NOTICE] : []),
     ...context.messages.map(renderMessage),
     `Current user message:\n${routed}`,

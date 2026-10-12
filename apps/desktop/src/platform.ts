@@ -73,6 +73,14 @@ export async function cancelRunStart(startId: string): Promise<void> {
   await window.workbenchDesktop?.runs.cancelStart(startId);
 }
 
+/**
+ * Tell the main process a chat was compacted, so its provider conversations are
+ * dropped. False when the desktop runtime is absent or a run owns the chat.
+ */
+export async function compactChatSessions(chatId: string): Promise<boolean> {
+  return window.workbenchDesktop?.chats.compact(chatId) ?? false;
+}
+
 export async function releaseAttachments(ids: string[]): Promise<void> {
   await window.workbenchDesktop?.assets.release(ids);
 }

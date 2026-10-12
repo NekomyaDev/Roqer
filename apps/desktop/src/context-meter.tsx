@@ -10,15 +10,26 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * short figure, and the reported numbers behind them on a click. A chat with
  * nothing reported shows an empty dashed ring instead of a guess.
  */
-export function ContextMeter({ view, modelName, onNewChat }: {
+export function ContextMeter({ view, modelName, onNewChat, compacted, canCompact, onCompact }: {
   view: ContextMeterView;
   /** What the picker calls the model the reading is for. */
   modelName: string | null;
   onNewChat: () => void;
+  /** Earlier messages a manual compact has folded into a record; 0 when none. */
+  compacted: number;
+  canCompact: boolean;
+  onCompact: () => void;
 }) {
   const reported = view.kind === "reported";
   const tone = reported ? view.tone : "none";
   const filled = reported ? (view.percent ?? 0) / 100 : 0;
+  // Shared by both panel states: a chat with no reading can still be compacted.
+  const compactRow = (close: () => void) => <div className="context-compact">
+    <span>{compacted > 0
+      ? `${compacted} earlier ${compacted === 1 ? "message is" : "messages are"} summarized for the model.`
+      : "Summarize older messages to free up room."}</span>
+    <button type="button" disabled={!canCompact} onClick={() => { close(); onCompact(); }}>Compact chat</button>
+  </div>;
   return <ComposerMenu
     className={`context-menu tone-${tone}`}
     label="Context window"
@@ -42,6 +53,7 @@ export function ContextMeter({ view, modelName, onNewChat }: {
     ? <div className="context-panel">
       <strong>Context window</strong>
       <p className="context-footnote">{view.message}</p>
+      {compactRow(close)}
     </div>
     : <div className="context-panel">
       <div className="context-panel-head">
@@ -60,6 +72,7 @@ export function ContextMeter({ view, modelName, onNewChat }: {
         <div><dt>In use</dt><dd>{view.usedTokens}</dd></div>
       </dl>
       <p className="context-footnote">{view.footnote}</p>
+      {compactRow(close)}
     </div>}
   </ComposerMenu>;
 }

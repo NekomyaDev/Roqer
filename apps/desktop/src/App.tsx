@@ -13,11 +13,11 @@ import { VIDEO_EXTENSIONS, type ClipSelection } from "../shared/reference-clip";
 import {
   appendMessage, createChat, createId, createInitialWorkspace, createProject,
   deleteChat, deleteProject, modelPreference, normalizeWorkspace, renameChat,
-  renameProject, selectedModelId, setChatStudioInstance, chatStudioTarget, chatsByActivity, withdrawMessage,
+  renameProject, selectedModelId, setChatCompaction, setChatStudioInstance, chatStudioTarget, chatsByActivity, withdrawMessage,
   type AssetAttachment, type ChatMessage, type WorkspaceState,
 } from "./model";
 import {
-  cancelRun, cancelRunStart, getStudioStatus,
+  cancelRun, cancelRunStart, compactChatSessions, getStudioStatus,
   hasDesktopRuntime, loadWorkspace, pickAsset, getStorageStatus, recoverWorkspace, exportWorkspace, releaseAttachments,
   answerRunQuestion, attachImage, attachVideo, ATTACHABLE_IMAGE_TYPES, ATTACHABLE_VIDEO_TYPES, selectClip, steerRun,
   getBridgeState, restartBridge, subscribeToBridge, type McpServerState,
@@ -65,7 +65,8 @@ import {
 } from "./conversation-window";
 import { DEMO_PLANNER, startDemoRun, type DemoRunHandle } from "./demo-run";
 import { evidenceDetailLabel, type ActivityKind } from "../shared/activity";
-import { boundConversation, MAX_MESSAGE_ATTACHMENTS } from "../shared/conversation";
+import { boundConversation, MAX_MESSAGE_ATTACHMENTS, type ConversationMessage } from "../shared/conversation";
+import { compactChatSummary } from "../shared/chat-compaction";
 import { digestIsEmpty, digestRun } from "../shared/run-digest";
 import { MAX_STEER_CHARS } from "../shared/steer";
 import { describePolicyReason } from "../shared/policy";
@@ -135,6 +136,31 @@ const MAX_IMAGES_PER_MESSAGE = 4;
 
 const isImageAttachment = (attachment: AssetAttachment): boolean =>
   attachment.mediaType !== undefined && ATTACHABLE_IMAGE_TYPES.has(attachment.mediaType);
+
+/** A manual compact keeps the last exchange word for word, so the next run starts from what was just said. */
+const COMPACT_KEEPS_MESSAGES = 2;
+
+/**
+ * A chat's messages as the model is given them: the words, the run digests, and
+ * how many files a message carried. The send path and a compact both use it, so
+ * a record is written from the same view the model would have been sent.
+ */
+function toConversationMessages(messages: readonly ChatMessage[]): ConversationMessage[] {
+  return messages.map(({ role, text, run, attachments: attached }) => {
+    const digest = run === undefined ? undefined : digestRun(run);
+    // A replay carries the words, not the files; the count says they existed.
+    // Clamped to what the main process accepts, so an odd saved message can
+    // never make the chat impossible to continue.
+    const images = (attached ?? []).filter(isImageAttachment).length;
+    const pictures = Math.min(images, MAX_MESSAGE_ATTACHMENTS);
+    const files = Math.min((attached ?? []).length - images, MAX_MESSAGE_ATTACHMENTS);
+    return {
+      role, text,
+      ...(digest === undefined || digestIsEmpty(digest) ? {} : { run: digest }),
+      ...(role === "user" && pictures + files > 0 ? { attachments: { pictures, files } } : {}),
+    };
+  });
+}
 
 /**
  * The pictures an attachment adds to its message: a clip goes as up to two
@@ -597,6 +623,29 @@ function App() {
   }, [runView]);
 
   const isRunning = runStarting || (runView !== null && runView.outcome === null);
+
+  const compactedFrom = selectedChat?.compaction?.folded ?? 0;
+  const compactTo = selectedChat === undefined ? 0 : selectedChat.messages.length - COMPACT_KEEPS_MESSAGES;
+  // Nothing new to fold yet, or a run may be working on this chat.
+  const canCompact = !isRunning && compactTo > compactedFrom;
+
+  /**
+   * Fold the chat's older messages into a record the model reads in their place.
+   * Only the model's view changes: every message stays on screen. The main process
+   * is asked first, since it drops the provider's own copy of the conversation and
+   * refuses while a run owns the chat, in which case nothing changes here.
+   */
+  const compactSelectedChat = async () => {
+    if (!selectedChat || !selectedProject || !canCompact) return;
+    const projectId = selectedProject.id;
+    const chatId = selectedChat.id;
+    if (hasDesktopRuntime() && !(await compactChatSessions(chatId))) return;
+    const summary = compactChatSummary(
+      selectedChat.compaction?.summary ?? "",
+      toConversationMessages(selectedChat.messages.slice(compactedFrom, compactTo)),
+    );
+    setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary }));
+  };
   const runBelongsToSelectedChat = runTarget.current?.projectId === workspace.selectedProjectId &&
     runTarget.current?.chatId === workspace.selectedChatId;
   const showRunControls = runBelongsToSelectedChat && (runStarting || runView !== null);
@@ -692,20 +741,12 @@ function App() {
     // A reply that came from a run carries the host's digest of that run --
     // what it changed, left open, and was told -- so a follow-up starts from
     // the record rather than rediscovering it from Studio.
-    const conversation = boundConversation((targetChat?.messages ?? []).map(({ role, text, run, attachments: attached }) => {
-      const digest = run === undefined ? undefined : digestRun(run);
-      // A replay carries the words, not the files; the count says they existed.
-      // Clamped to what the main process accepts, so an odd saved message can
-      // never make the chat impossible to continue.
-      const images = (attached ?? []).filter(isImageAttachment).length;
-      const pictures = Math.min(images, MAX_MESSAGE_ATTACHMENTS);
-      const files = Math.min((attached ?? []).length - images, MAX_MESSAGE_ATTACHMENTS);
-      return {
-        role, text,
-        ...(digest === undefined || digestIsEmpty(digest) ? {} : { run: digest }),
-        ...(role === "user" && pictures + files > 0 ? { attachments: { pictures, files } } : {}),
-      };
-    }));
+    // Messages a compact folded away are not replayed; its record stands for them.
+    const folded = targetChat?.compaction?.folded ?? 0;
+    const conversation = boundConversation(
+      toConversationMessages((targetChat?.messages ?? []).slice(folded)),
+      targetChat?.compaction?.summary,
+    );
     const messageId = createId("message");
     next = appendMessage(next, projectId, chatId, {
       id: messageId, role: "user", text: prompt, createdAt: new Date().toISOString(),
@@ -1600,7 +1641,14 @@ function App() {
               />
               <div className="toolbar-spacer" />
               {composerHint !== null && <span className="composer-hint">{composerHint}</span>}
-              <ContextMeter view={contextView} modelName={selectedModel?.displayName ?? null} onNewChat={newChat} />
+              <ContextMeter
+                view={contextView}
+                modelName={selectedModel?.displayName ?? null}
+                onNewChat={newChat}
+                compacted={compactedFrom}
+                canCompact={canCompact}
+                onCompact={() => void compactSelectedChat()}
+              />
               {showRunControls && <button className="stop-button" onClick={stopRun}><Square size={11} fill="currentColor" aria-hidden="true" /> Stop</button>}
               {steering
                 ? pendingQuestion && composer.trim()
