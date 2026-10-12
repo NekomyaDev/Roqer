@@ -38,6 +38,17 @@ export function nextContextReading(previous: ContextReading | undefined, next: C
   return { ...next, windowTokens: previous.windowTokens };
 }
 
+/**
+ * What a compact says about the context the chat was using when it was taken.
+ * Null when the provider had reported nothing, so no figure is invented.
+ */
+export function compactUsageNote(usedTokens: number | undefined, windowTokens: number | null | undefined): string | null {
+  if (usedTokens === undefined) return null;
+  return windowTokens === null || windowTokens === undefined
+    ? `This chat was using ${compactTokenCount(usedTokens)} tokens when it was compacted.`
+    : `This chat was using ${compactTokenCount(usedTokens)} of ${compactTokenCount(windowTokens)} tokens when it was compacted.`;
+}
+
 export type ContextMeterTone = "normal" | "warning" | "danger";
 
 export type ContextMeterView =

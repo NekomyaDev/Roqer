@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { compactTokenCount, contextMeterView, nextContextReading, type ContextReading } from "./context-usage";
+import { compactTokenCount, compactUsageNote, contextMeterView, nextContextReading, type ContextReading } from "./context-usage";
 
 const OBSERVED = Date.UTC(2026, 9, 1, 14, 5);
 const reading = (overrides: Partial<ContextReading> = {}): ContextReading => ({
@@ -74,6 +74,13 @@ test("without a reported window the meter shows tokens in use and claims no shar
 
   const custom = contextMeterView(reading({ provider: "custom", model: "qwen", windowTokens: null }), { provider: "custom", model: "qwen" }, "UTC");
   assert.match(custom.kind === "reported" ? custom.footnote : "", /^Reported by your endpoint at 2:05 PM\. Set this model's context window in Settings/);
+});
+
+test("a compact says how much context the chat was using, or nothing when unreported", () => {
+  assert.equal(compactUsageNote(68_412, 200_000), "This chat was using 68.4k of 200k tokens when it was compacted.");
+  assert.equal(compactUsageNote(68_412, null), "This chat was using 68.4k tokens when it was compacted.");
+  assert.equal(compactUsageNote(68_412, undefined), "This chat was using 68.4k tokens when it was compacted.");
+  assert.equal(compactUsageNote(undefined, undefined), null);
 });
 
 test("a report without a window keeps the one the same model reported before", () => {

@@ -43,7 +43,7 @@ import { sendBlockedNotice } from "./send-blocked";
 import { ResultsCard, type FileExpansion } from "./results-card";
 import { ModelMenu, RunMenu } from "./composer-menus";
 import { ContextMeter } from "./context-meter";
-import { contextMeterView, nextContextReading, type ContextReading } from "./context-usage";
+import { compactUsageNote, contextMeterView, nextContextReading, type ContextReading } from "./context-usage";
 import { blockPreview, characterCount, composedMessage, isLongPaste, lineCount, textSize, type PastedBlock } from "./composer-text";
 import { RojoPill } from "./rojo-pill";
 
@@ -237,6 +237,8 @@ function App() {
   const [runView, setRunView] = useState<RunView | null>(null);
   /** The latest context reading per chat, for the composer's meter. Never saved; see context-usage.ts. */
   const [contextReadings, setContextReadings] = useState<ReadonlyMap<string, ContextReading>>(() => new Map());
+  // What the last compact said, kept with its chat so it never shows on another one.
+  const [compactNotice, setCompactNotice] = useState<{ chatId: string; text: string } | null>(null);
   const [runStarting, setRunStarting] = useState(false);
   /** The callId of a pending question being answered in the composer, if any. */
   const [explainingQuestion, setExplainingQuestion] = useState<string | null>(null);
@@ -625,6 +627,7 @@ function App() {
   const isRunning = runStarting || (runView !== null && runView.outcome === null);
 
   const compactedFrom = selectedChat?.compaction?.folded ?? 0;
+  const compactedUsage = compactUsageNote(selectedChat?.compaction?.usedTokens, selectedChat?.compaction?.windowTokens);
   const compactTo = selectedChat === undefined ? 0 : selectedChat.messages.length - COMPACT_KEEPS_MESSAGES;
   // Nothing new to fold yet, or a run may be working on this chat.
   const canCompact = !isRunning && compactTo > compactedFrom;
@@ -644,7 +647,15 @@ function App() {
       selectedChat.compaction?.summary ?? "",
       toConversationMessages(selectedChat.messages.slice(compactedFrom, compactTo)),
     );
-    setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary }));
+    // The figures are the provider's last report for this chat, taken as the
+    // compact happens. A chat with no report yet records none.
+    const reading = contextReadings.get(chatId);
+    const usage: { usedTokens?: number; windowTokens?: number | null } = reading === undefined
+      ? {}
+      : { usedTokens: reading.usedTokens, windowTokens: reading.windowTokens };
+    setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary, ...usage }));
+    const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
+    setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
   };
   const runBelongsToSelectedChat = runTarget.current?.projectId === workspace.selectedProjectId &&
     runTarget.current?.chatId === workspace.selectedChatId;
@@ -785,6 +796,7 @@ function App() {
     eventBuffer.current = [];
     activeRunId.current = null;
     setRunStarting(true);
+    setCompactNotice(null);
 
     if (!hasDesktopRuntime()) {
       const runId = createId("demo-run");
@@ -1641,11 +1653,13 @@ function App() {
               />
               <div className="toolbar-spacer" />
               {composerHint !== null && <span className="composer-hint">{composerHint}</span>}
+              {composerHint === null && compactNotice?.chatId === workspace.selectedChatId && <span className="composer-hint">{compactNotice.text}</span>}
               <ContextMeter
                 view={contextView}
                 modelName={selectedModel?.displayName ?? null}
                 onNewChat={newChat}
                 compacted={compactedFrom}
+                compactedUsage={compactedUsage}
                 canCompact={canCompact}
                 onCompact={() => void compactSelectedChat()}
               />

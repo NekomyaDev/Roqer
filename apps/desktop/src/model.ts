@@ -313,7 +313,14 @@ export function normalizeWorkspace(value: unknown, themeFallback: Theme = "dark"
       // A compact that folds more messages than the chat holds is not a record
       // of this chat, so it is dropped and the chat is sent in full again.
       const compaction = isChatCompaction(chat.compaction) && chat.compaction.folded <= messages.length
-        ? { folded: chat.compaction.folded, summary: chat.compaction.summary }
+        ? {
+          folded: chat.compaction.folded,
+          summary: chat.compaction.summary,
+          ...(chat.compaction.usedTokens === undefined ? {} : {
+            usedTokens: chat.compaction.usedTokens,
+            windowTokens: chat.compaction.windowTokens ?? null,
+          }),
+        }
         : undefined;
       return [{
         id: chat.id,

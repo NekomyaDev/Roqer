@@ -13,6 +13,10 @@ import { MAX_COMPACT_SUMMARY_CHARS, type ConversationMessage } from "./conversat
 export type ChatCompaction = {
   folded: number;
   summary: string;
+  /** The context the chat was using when it was compacted, when the provider had reported it. */
+  usedTokens?: number;
+  /** The window that reading was against; null when the provider had not named one. */
+  windowTokens?: number | null;
 };
 
 /** How much of each message the record keeps. The start of a request says what it asked for. */
@@ -25,9 +29,12 @@ export const COMPACT_DROPPED_NOTICE = "[Older lines of this record were dropped 
 
 export function isChatCompaction(value: unknown): value is ChatCompaction {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const { folded, summary } = value as Record<string, unknown>;
+  const { folded, summary, usedTokens, windowTokens } = value as Record<string, unknown>;
+  const tokenCount = (count: unknown) => Number.isSafeInteger(count) && (count as number) >= 0;
   return Number.isInteger(folded) && (folded as number) >= 0 &&
-    typeof summary === "string" && summary.length <= MAX_COMPACT_SUMMARY_CHARS;
+    typeof summary === "string" && summary.length <= MAX_COMPACT_SUMMARY_CHARS &&
+    (usedTokens === undefined || tokenCount(usedTokens)) &&
+    (windowTokens === undefined || windowTokens === null || tokenCount(windowTokens));
 }
 
 function clip(text: string, max: number): string {

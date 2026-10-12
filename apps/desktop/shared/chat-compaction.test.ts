@@ -87,4 +87,10 @@ test("a compact record is valid only with a whole, non-negative fold count and a
   assert.equal(isChatCompaction({ folded: 1 }), false);
   assert.equal(isChatCompaction({ folded: 1, summary: "x".repeat(MAX_COMPACT_SUMMARY_CHARS + 1) }), false);
   assert.equal(isChatCompaction(null), false);
+  // The context figures are optional, but must be whole counts when present.
+  assert.equal(isChatCompaction({ folded: 1, summary: "", usedTokens: 68_412, windowTokens: 200_000 }), true);
+  assert.equal(isChatCompaction({ folded: 1, summary: "", usedTokens: 68_412, windowTokens: null }), true);
+  assert.equal(isChatCompaction({ folded: 1, summary: "", usedTokens: -1 }), false);
+  assert.equal(isChatCompaction({ folded: 1, summary: "", usedTokens: 1.5 }), false);
+  assert.equal(isChatCompaction({ folded: 1, summary: "", windowTokens: "200k" }), false);
 });

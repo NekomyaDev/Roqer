@@ -50,6 +50,18 @@ test("a compact that folds more messages than the chat holds is dropped on load"
   assert.equal(restored.projects[0].chats[0].messages.length, 2);
 });
 
+test("the context a compact was taken at survives a save and reload", () => {
+  const { state, projectId, chatId } = chatWithTwoMessages();
+  const compacted = setChatCompaction(state, projectId, chatId, {
+    folded: 1, summary: "- User asked: Make a shop", usedTokens: 68_412, windowTokens: null,
+  });
+  const restored = normalizeWorkspace(JSON.parse(JSON.stringify(compacted)));
+
+  assert.deepEqual(restored.projects[0].chats[0].compaction, {
+    folded: 1, summary: "- User asked: Make a shop", usedTokens: 68_412, windowTokens: null,
+  });
+});
+
 test("a chat that was never compacted has no compaction field", () => {
   const { state } = chatWithTwoMessages();
   const restored = normalizeWorkspace(JSON.parse(JSON.stringify(state)));
