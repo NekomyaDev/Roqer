@@ -14,6 +14,7 @@ import { createChatGptPlanner, type CodexThread } from "../runtime/chatgpt-plann
 import { createAgentLoopPlanner, type AgentLoopSession } from "../runtime/agent-loop";
 import { toolOutputBudgetFor } from "../runtime/agent-loop-history";
 import { CustomProviderStore } from "../runtime/custom-provider-store";
+import { StudioPlaceClaims, type StudioPlaceClaim } from "../runtime/studio-place-claims";
 import { bridgeEnvironment, checkOpenCloudKey } from "../runtime/open-cloud";
 import { BlenderSettings } from "../runtime/blender-settings";
 import { BlenderWorker } from "../runtime/blender-worker";
@@ -1831,11 +1832,24 @@ function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   );
 }
 
+/** One writing run per Roblox Studio place; see studio-place-claims.ts. */
+const studioPlaces = new StudioPlaceClaims();
+const STUDIO_PLACE_BUSY = "Another chat is already working in this Roblox Studio place. Wait for it to finish, or choose a different place for this chat.";
+
 async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<RunStartResult> {
   if (!isTrusted(event.sender) || shuttingDown) return { ok: false, message: "This window may not start runs." };
 
   const request = parseStartRequest(payload);
   if (!request) return { ok: false, message: "The run request was not valid." };
+
+  // A Studio place takes one writing run at a time: two runs editing the same
+  // place could overwrite each other's work. The place is claimed here, before
+  // the first await, so two starts that arrive together cannot both get it.
+  let heldPlace: StudioPlaceClaim | null = null;
+  if (request.instanceId !== null) {
+    heldPlace = studioPlaces.claim(request.instanceId);
+    if (heldPlace === null) return { ok: false, message: STUDIO_PLACE_BUSY };
+  }
 
   const sender = event.sender;
   const pending = pendingRuns.begin(sender.id, request.startId ?? randomUUID());
@@ -2004,6 +2018,7 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     const execution = session.execute().finally(async () => {
       runSessions.delete(runId);
       runChats.delete(runId);
+      studioPlaces.release(heldPlace);
       // However the run ended, it waits on no one now.
       runAttention?.endRun(runId);
       // The saved chat refers to them from here on; the picture store's grace
@@ -2029,6 +2044,7 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
   } finally {
     pending.finish();
     if (!executionStarted) {
+      studioPlaces.release(heldPlace);
       attachments.release(request.attachmentIds ?? []);
       if (journalId) {
         await runJournal().acknowledge([journalId]).catch((error) => console.error("Roqer could not discard a run that never started", error));
