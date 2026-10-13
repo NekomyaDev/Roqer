@@ -226,11 +226,8 @@ function serializeBounded(snapshot: Snapshot): string {
 function recoveredMessage(snapshot: Snapshot): ChatMessage {
   const interrupted = snapshot.completion === undefined;
   const clipped = snapshot.clipped;
-  const finishedAt = snapshot.completion?.at ?? new Date().toISOString();
-  // Recovery knows when an interrupted run began but not when it stopped. Use
-  // an unavailable interval on the record instead of counting offline time;
-  // the recovered message keeps `finishedAt` as its ordering timestamp.
-  const startedAt = interrupted ? finishedAt : snapshot.startedAt;
+  const recoveredAt = new Date().toISOString();
+  const finishedAt = snapshot.completion?.at ?? "";
   let summary = snapshot.completion?.summary ??
     "Interrupted before the agent finished. Previous changes may already exist in Studio; inspect them before continuing.";
   if (clipped) summary = `${summary}\n\nSome run details were clipped by the recovery journal. Inspect Studio before treating this result as complete.`;
@@ -247,7 +244,7 @@ function recoveredMessage(snapshot: Snapshot): ChatMessage {
     planner: snapshot.planner,
     approvalMode: snapshot.approvalMode,
     outcome: interrupted ? "cancelled" : clipped ? "failed" : snapshot.completion!.outcome,
-    startedAt,
+    startedAt: snapshot.startedAt,
     finishedAt,
     toolCalls: snapshot.toolCalls,
     changes: snapshot.changes,
@@ -262,7 +259,7 @@ function recoveredMessage(snapshot: Snapshot): ChatMessage {
     ...(snapshot.completion?.usage !== undefined ? { usage: snapshot.completion.usage } : {}),
   };
   const text = snapshot.text.trim() ? `${snapshot.text.trim()}\n\n${summary}` : summary;
-  return { id: `recovered-${snapshot.runId}`, role: "assistant", text, createdAt: finishedAt, run };
+  return { id: `recovered-${snapshot.runId}`, role: "assistant", text, createdAt: finishedAt || recoveredAt, run };
 }
 
 /** Main-process-owned, bounded recovery checkpoints for runs in progress. */

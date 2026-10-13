@@ -5,8 +5,8 @@ import { summarizeToolCall } from "../shared/mcp-tools";
 import type { RunEvent, RunEventBody } from "../shared/run-events";
 import { activitySteps, applyRunEvent, createRunView, type ActivityStep, type RunView } from "./run-view";
 import {
-  activeStepTitle, aggregateDuration, buildActivityModel, completedRunDurationLabel, currentNodeTitle, elapsedLabel,
-  outputTokensLabel, mergeFindings, stepStatus, type ActivityNode,
+  activeStepTitle, aggregateDuration, buildActivityModel, completedRunDurationLabel, completedRunMetadataLabel,
+  currentNodeTitle, elapsedLabel, outputTokensLabel, mergeFindings, stepStatus, type ActivityNode,
 } from "./activity-model";
 
 const RUN_ID = "run-1";
@@ -406,6 +406,16 @@ test("a completed run duration is omitted when its timestamps cannot be trusted"
   assert.equal(completedRunDurationLabel("0", "1"), null);
   assert.equal(completedRunDurationLabel(startedAt, startedAt), null);
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T09:59:59.000Z"), null);
+});
+
+test("completed run metadata keeps its label when duration is unavailable", () => {
+  const startedAt = "2026-10-13T10:00:00.000Z";
+  assert.equal(
+    completedRunMetadataLabel("Full auto", startedAt, "2026-10-13T10:00:42.000Z"),
+    "Full auto · 42s",
+  );
+  assert.equal(completedRunMetadataLabel("Demo", startedAt, "2026-10-13T10:00:42.000Z"), "Demo · 42s");
+  assert.equal(completedRunMetadataLabel("Full auto", startedAt, ""), "Full auto");
 });
 
 test("a live output count is marked as an estimate until the provider reports its own", () => {

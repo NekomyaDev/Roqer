@@ -329,6 +329,12 @@ export function completedRunDurationLabel(startedAt: string, finishedAt: string)
   return `${hours}h${remainingMinutes === 0 ? "" : ` ${remainingMinutes}m`}`;
 }
 
+/** An approval or demo label, with elapsed time only when the interval is trustworthy. */
+export function completedRunMetadataLabel(label: string, startedAt: string, finishedAt: string): string {
+  const duration = completedRunDurationLabel(startedAt, finishedAt);
+  return `${label}${duration === null ? "" : ` · ${duration}`}`;
+}
+
 /**
  * How much the model has written so far, beside the waiting clock.
  *

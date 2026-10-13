@@ -57,8 +57,8 @@ import {
   type ChangeGroup, type DiffRow, type SyntaxToken,
 } from "./diff-view";
 import {
-  aggregateDuration, buildActivityModel, completedRunDurationLabel, currentNodeTitle, elapsedLabel,
-  MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
+  aggregateDuration, buildActivityModel, completedRunMetadataLabel, currentNodeTitle,
+  elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
 } from "./activity-model";
 import {
   CONVERSATION_WINDOW_SIZE, earlierConversationWindowStart, initialConversationWindowStart,
@@ -1923,6 +1923,13 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
   const answered = view.text.trim() !== "";
   const running = view.outcome === null;
   const appliedAndVerified = runAppliedAndVerified(view);
+  const onlyAnswered = runOnlyAnswered(view);
+  const showOutcome = !appliedAndVerified && !onlyAnswered;
+  const completionNote = completedRunMetadataLabel(
+    view.planner === DEMO_PLANNER ? "Demo" : view.approvalMode,
+    view.startedAt,
+    view.finishedAt,
+  );
   // Anything the run has put on screen retires the dots: a plan, an activity
   // row, a question to answer (docked above the composer), or the first words
   // of the reply.
@@ -1952,14 +1959,15 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       ? <div className="markdown result-copy streaming-copy"><p>{view.text}</p></div>
       : <Markdown text={view.text} className="result-copy" />)}
     {appliedAndVerified && <AppliedStatus />}
-    {view.outcome !== null && !appliedAndVerified && !runOnlyAnswered(view) && <OutcomeCard
+    {view.outcome !== null && showOutcome && <OutcomeCard
       outcome={view.outcome}
       warnings={runHasWarnings(view)}
       // Once the answer is on screen, repeating it on the card says nothing.
       summary={view.outcome === "completed" && answered ? runFacts(view) : view.summary}
-      note={failureNote(view.failures.length)}
+      note={[completionNote, failureNote(view.failures.length)].filter(Boolean).join(" · ")}
       issues={runGateIssues(view)}
     />}
+    {!running && !showOutcome && <p className="run-completion-metadata">{completionNote}</p>}
     {view.usage !== null && <UsageLine usage={view.usage} />}
     {view.desynchronized && <p className="run-warning"><AlertCircle size={14} /> Some updates were missed, so this timeline may be incomplete.</p>}
   </div></section></div>;
@@ -2563,9 +2571,11 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
   const appliedAndVerified = recordAppliedAndVerified(record);
   const onlyAnswered = recordOnlyAnswered(record, text);
   const showOutcome = !appliedAndVerified && !onlyAnswered;
-  const duration = completedRunDurationLabel(record.startedAt, record.finishedAt);
-  const baseNote = record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode;
-  const outcomeNote = `${baseNote}${duration === null ? "" : ` · ${duration}`}`;
+  const outcomeNote = completedRunMetadataLabel(
+    record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode,
+    record.startedAt,
+    record.finishedAt,
+  );
   const steps = useMemo(() => recordSteps(record), [record]);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
   return <>
