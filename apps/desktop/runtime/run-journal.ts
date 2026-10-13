@@ -226,7 +226,8 @@ function serializeBounded(snapshot: Snapshot): string {
 function recoveredMessage(snapshot: Snapshot): ChatMessage {
   const interrupted = snapshot.completion === undefined;
   const clipped = snapshot.clipped;
-  const finishedAt = snapshot.completion?.at ?? new Date().toISOString();
+  const recoveredAt = new Date().toISOString();
+  const finishedAt = snapshot.completion?.at ?? "";
   let summary = snapshot.completion?.summary ??
     "Interrupted before the agent finished. Previous changes may already exist in Studio; inspect them before continuing.";
   if (clipped) summary = `${summary}\n\nSome run details were clipped by the recovery journal. Inspect Studio before treating this result as complete.`;
@@ -258,7 +259,7 @@ function recoveredMessage(snapshot: Snapshot): ChatMessage {
     ...(snapshot.completion?.usage !== undefined ? { usage: snapshot.completion.usage } : {}),
   };
   const text = snapshot.text.trim() ? `${snapshot.text.trim()}\n\n${summary}` : summary;
-  return { id: `recovered-${snapshot.runId}`, role: "assistant", text, createdAt: finishedAt, run };
+  return { id: `recovered-${snapshot.runId}`, role: "assistant", text, createdAt: finishedAt || recoveredAt, run };
 }
 
 /** Main-process-owned, bounded recovery checkpoints for runs in progress. */

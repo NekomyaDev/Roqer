@@ -14,6 +14,7 @@ import {
   runAppliedAndVerified, runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, usageLabel,
   type RunView,
 } from "./run-view";
+import { completedRunDurationLabel } from "./activity-model";
 
 const RUN_ID = "run-1";
 
@@ -300,6 +301,16 @@ test("toRunRecord compacts only a finished run", () => {
   ]);
   assert.equal(record.startedAt, finished.startedAt);
   assert.equal(record.finishedAt, finished.finishedAt);
+});
+
+test("a compacted run with no observed start does not claim zero elapsed time", () => {
+  const finished = fold(stream(
+    { type: "run-completed", outcome: "completed", summary: "done" },
+  ));
+  const record = toRunRecord(finished);
+  assert.ok(record);
+  assert.equal(record.startedAt, record.finishedAt, "compaction preserves the historical fallback");
+  assert.equal(completedRunDurationLabel(record.startedAt, record.finishedAt), null);
 });
 
 test("a note the user added stays with the run once it has ended", () => {

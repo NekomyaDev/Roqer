@@ -30,7 +30,7 @@ import {
 import {
   activitySteps, applyRunEvent, createRunView, describeOutcome, recordAppliedAndVerified,
   recordGateIssues, recordHasWarnings, recordOnlyAnswered, recordSteps, runAppliedAndVerified,
-  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture, usageLabel,
+  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture,
   type ActivityStep, type PendingApproval, type RunView,
 } from "./run-view";
 import { EvidencePicture, rememberEvidencePicture } from "./evidence-picture";
@@ -57,9 +57,10 @@ import {
   type ChangeGroup, type DiffRow, type SyntaxToken,
 } from "./diff-view";
 import {
-  aggregateDuration, buildActivityModel, currentNodeTitle, elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel,
-  type ActivityNode, type StepStatus,
+  aggregateDuration, buildActivityModel, completedRunMetadataLabel, currentNodeTitle,
+  elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
 } from "./activity-model";
+import { CompletionLine } from "./completion-line";
 import {
   CONVERSATION_WINDOW_SIZE, earlierConversationWindowStart, initialConversationWindowStart,
 } from "./conversation-window";
@@ -72,7 +73,7 @@ import { describePolicyReason } from "../shared/policy";
 import { mcpServerMessage } from "../shared/mcp-server";
 import { appUpdateMessage, canInstallUpdate, updateInProgress } from "../shared/app-update";
 import type {
-  RunChange, RunEvent, RunEvidence, RunMetadata, RunOutcome, RunRecord, RunStartRequest, RunUsage,
+  RunChange, RunEvent, RunEvidence, RunMetadata, RunOutcome, RunRecord, RunStartRequest,
 } from "../shared/run-events";
 import { connectedStudios, resolveInstanceId } from "../shared/studio-status";
 import type { StorageStatus } from "../shared/workspace-storage";
@@ -1923,6 +1924,13 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
   const answered = view.text.trim() !== "";
   const running = view.outcome === null;
   const appliedAndVerified = runAppliedAndVerified(view);
+  const onlyAnswered = runOnlyAnswered(view);
+  const showOutcome = !appliedAndVerified && !onlyAnswered;
+  const completionNote = completedRunMetadataLabel(
+    view.planner === DEMO_PLANNER ? "Demo" : view.approvalMode,
+    view.startedAt,
+    view.finishedAt,
+  );
   // Anything the run has put on screen retires the dots: a plan, an activity
   // row, a question to answer (docked above the composer), or the first words
   // of the reply.
@@ -1952,7 +1960,7 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       ? <div className="markdown result-copy streaming-copy"><p>{view.text}</p></div>
       : <Markdown text={view.text} className="result-copy" />)}
     {appliedAndVerified && <AppliedStatus />}
-    {view.outcome !== null && !appliedAndVerified && !runOnlyAnswered(view) && <OutcomeCard
+    {view.outcome !== null && showOutcome && <OutcomeCard
       outcome={view.outcome}
       warnings={runHasWarnings(view)}
       // Once the answer is on screen, repeating it on the card says nothing.
@@ -1960,7 +1968,7 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       note={failureNote(view.failures.length)}
       issues={runGateIssues(view)}
     />}
-    {view.usage !== null && <UsageLine usage={view.usage} />}
+    {!running && <CompletionLine metadata={completionNote} usage={view.usage ?? undefined} />}
     {view.desynchronized && <p className="run-warning"><AlertCircle size={14} /> Some updates were missed, so this timeline may be incomplete.</p>}
   </div></section></div>;
 }
@@ -2427,20 +2435,6 @@ const ChangeSet = memo(function ChangeSet({ groups, expansion, onOpenInStudio }:
   </div>;
 });
 
-/**
- * What a finished run used, under its outcome. Its own line rather than part
- * of the outcome card, because a run that applied and verified its change, or
- * only answered, shows no card, and those are runs worth measuring too.
- */
-function UsageLine({ usage }: { usage: RunUsage }) {
-  return <p
-    className="run-usage"
-    title={usage.costUsd === undefined
-      ? "As the provider reported it."
-      : "As the provider reported it. The price is its estimate at API list prices; on a subscription it is not what you pay."}
-  >{usageLabel(usage)}</p>;
-}
-
 function AppliedStatus() {
   return <div className="applied-status"><Check size={14} /><span>Applied and verified in Studio</span></div>;
 }
@@ -2561,6 +2555,13 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
   const warnings = recordHasWarnings(record);
   const failed = record.toolCalls.filter((call) => !call.ok).length;
   const appliedAndVerified = recordAppliedAndVerified(record);
+  const onlyAnswered = recordOnlyAnswered(record, text);
+  const showOutcome = !appliedAndVerified && !onlyAnswered;
+  const outcomeNote = completedRunMetadataLabel(
+    record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode,
+    record.startedAt,
+    record.finishedAt,
+  );
   const steps = useMemo(() => recordSteps(record), [record]);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
   return <>
@@ -2569,14 +2570,14 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
     <ResultsCard runId={record.runId} changes={record.changes} evidence={record.evidence} collapsed={!latest} renderFiles={renderFiles} />
     <Markdown text={text} className="result-copy" />
     {appliedAndVerified && <AppliedStatus />}
-    {!appliedAndVerified && !recordOnlyAnswered(record, text) && <OutcomeCard
+    {showOutcome && <OutcomeCard
       outcome={record.outcome}
       warnings={warnings}
       summary={countLine(record.toolCalls.length, record.changes.length, failed)}
-      note={record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode}
+      note={failureNote(failed)}
       issues={recordGateIssues(record)}
     />}
-    {record.usage !== undefined && <UsageLine usage={record.usage} />}
+    <CompletionLine metadata={outcomeNote} usage={record.usage} />
   </>;
 }
 

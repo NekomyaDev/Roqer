@@ -37,6 +37,8 @@ test("recovers an interrupted run with changes and evidence truthfully", async (
     assert.equal(recovered.length, 1);
     assert.equal(recovered[0].projectId, "project");
     assert.equal(recovered[0].message.run?.outcome, "cancelled");
+    assert.match(recovered[0].message.run?.startedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(recovered[0].message.run?.finishedAt, "", "an unobserved finish stays unavailable");
     assert.equal(recovered[0].message.run?.changes[0].target, "game.ServerScriptService.Main");
     assert.equal(recovered[0].message.run?.evidence[0].title, "Main");
     assert.match(recovered[0].message.text, /Previous changes may already exist in Studio/);

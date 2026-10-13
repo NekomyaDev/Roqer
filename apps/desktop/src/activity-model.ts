@@ -300,6 +300,47 @@ export function elapsedLabel(milliseconds: number): string {
 }
 
 /**
+ * The wall-clock time a completed run took, derived from its persisted event
+ * timestamps. Old or damaged records stay unlabeled rather than presenting an
+ * invalid measurement as real run evidence.
+ */
+function persistedTimestamp(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) return null;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value ? milliseconds : null;
+}
+
+export function completedRunDurationLabel(startedAt: string, finishedAt: string): string | null {
+  const started = persistedTimestamp(startedAt);
+  const finished = persistedTimestamp(finishedAt);
+  if (started === null || finished === null || finished <= started) return null;
+
+  const seconds = Math.floor((finished - started) / 1_000);
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m${remainingSeconds === 0 ? "" : ` ${remainingSeconds}s`}`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h${remainingMinutes === 0 ? "" : ` ${remainingMinutes}m`}`;
+}
+
+/** An approval or demo label, with elapsed time only when the interval is trustworthy. */
+export function completedRunMetadataLabel(label: string, startedAt: string, finishedAt: string): string {
+  const duration = completedRunDurationLabel(startedAt, finishedAt);
+  return `${label}${duration === null ? "" : ` · ${duration}`}`;
+}
+
+/** Completion metadata and optional provider usage as one reader-facing line. */
+export function completedRunDetailsLabel(metadata: string, usage: string | null): string {
+  return usage === null ? metadata : `${metadata} · ${usage}`;
+}
+
+/**
  * How much the model has written so far, beside the waiting clock.
  *
  * An estimate carries a `~`: it is counted from the characters that streamed,
