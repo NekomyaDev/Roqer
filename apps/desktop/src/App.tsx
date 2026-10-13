@@ -57,8 +57,8 @@ import {
   type ChangeGroup, type DiffRow, type SyntaxToken,
 } from "./diff-view";
 import {
-  aggregateDuration, buildActivityModel, currentNodeTitle, elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel,
-  type ActivityNode, type StepStatus,
+  aggregateDuration, buildActivityModel, completedRunDurationLabel, currentNodeTitle, elapsedLabel,
+  MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
 } from "./activity-model";
 import {
   CONVERSATION_WINDOW_SIZE, earlierConversationWindowStart, initialConversationWindowStart,
@@ -2561,6 +2561,12 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
   const warnings = recordHasWarnings(record);
   const failed = record.toolCalls.filter((call) => !call.ok).length;
   const appliedAndVerified = recordAppliedAndVerified(record);
+  const onlyAnswered = recordOnlyAnswered(record, text);
+  const showOutcome = !appliedAndVerified && !onlyAnswered;
+  const duration = completedRunDurationLabel(record.startedAt, record.finishedAt);
+  const outcomeNote = record.planner === DEMO_PLANNER
+    ? "Demo"
+    : `${record.approvalMode}${duration === null ? "" : ` · ${duration}`}`;
   const steps = useMemo(() => recordSteps(record), [record]);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
   return <>
@@ -2569,13 +2575,14 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
     <ResultsCard runId={record.runId} changes={record.changes} evidence={record.evidence} collapsed={!latest} renderFiles={renderFiles} />
     <Markdown text={text} className="result-copy" />
     {appliedAndVerified && <AppliedStatus />}
-    {!appliedAndVerified && !recordOnlyAnswered(record, text) && <OutcomeCard
+    {showOutcome && <OutcomeCard
       outcome={record.outcome}
       warnings={warnings}
       summary={countLine(record.toolCalls.length, record.changes.length, failed)}
-      note={record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode}
+      note={outcomeNote}
       issues={recordGateIssues(record)}
     />}
+    {!showOutcome && <p className="run-completion-metadata">{outcomeNote}</p>}
     {record.usage !== undefined && <UsageLine usage={record.usage} />}
   </>;
 }

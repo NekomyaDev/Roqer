@@ -5,8 +5,8 @@ import { summarizeToolCall } from "../shared/mcp-tools";
 import type { RunEvent, RunEventBody } from "../shared/run-events";
 import { activitySteps, applyRunEvent, createRunView, type ActivityStep, type RunView } from "./run-view";
 import {
-  activeStepTitle, aggregateDuration, buildActivityModel, currentNodeTitle, elapsedLabel, outputTokensLabel,
-  mergeFindings, stepStatus, type ActivityNode,
+  activeStepTitle, aggregateDuration, buildActivityModel, completedRunDurationLabel, currentNodeTitle, elapsedLabel,
+  outputTokensLabel, mergeFindings, stepStatus, type ActivityNode,
 } from "./activity-model";
 
 const RUN_ID = "run-1";
@@ -385,6 +385,26 @@ test("a live wait reads as whole seconds, and as a clock once it passes a minute
   assert.equal(elapsedLabel(600_000), "10:00");
   // A clock that disagrees with itself between ticks would print a negative.
   assert.equal(elapsedLabel(-5_000), "0s");
+});
+
+test("a completed run duration uses compact units", () => {
+  const startedAt = "2026-10-13T10:00:00.000Z";
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:00:42.000Z"), "42s");
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:08:34.000Z"), "8m 34s");
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T11:12:34.000Z"), "1h 12m");
+  assert.equal(completedRunDurationLabel(startedAt, startedAt), "0s");
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:01:00.000Z"), "1m");
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T11:00:00.000Z"), "1h");
+});
+
+test("a completed run duration is omitted when its timestamps cannot be trusted", () => {
+  const startedAt = "2026-10-13T10:00:00.000Z";
+  assert.equal(completedRunDurationLabel("", ""), null);
+  assert.equal(completedRunDurationLabel("not-a-date", "2026-10-13T10:00:42.000Z"), null);
+  assert.equal(completedRunDurationLabel(startedAt, "not-a-date"), null);
+  assert.equal(completedRunDurationLabel("2026-02-30T10:00:00.000Z", "2026-03-02T10:00:42.000Z"), null);
+  assert.equal(completedRunDurationLabel("0", "1"), null);
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T09:59:59.000Z"), null);
 });
 
 test("a live output count is marked as an estimate until the provider reports its own", () => {
