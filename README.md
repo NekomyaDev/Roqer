@@ -14,6 +14,7 @@
   <a href="https://github.com/S4US/Roqer/actions/workflows/ci.yml"><img src="https://github.com/S4US/Roqer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/S4US/Roqer/releases"><img src="https://img.shields.io/github/downloads/S4US/Roqer/total.svg" alt="GitHub Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg" alt="AGPL-3.0-or-later license"></a>
+  <a href="https://discord.gg/vqzKJK4STR"><img src="https://img.shields.io/badge/Discord-join%20chat-5865F2?logo=discord&logoColor=white" alt="Join the Roqer Discord"></a>
 </p>
 
 <p align="center">
@@ -97,7 +98,7 @@ What Roqer is working toward. Plans can change; [open an issue](https://github.c
 
 ## Contributing
 
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up, test, and send a change. Please report security problems privately, as [SECURITY.md](SECURITY.md) describes.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up, test, and send a change. For questions, ideas, or to show what you built, join the [Roqer Discord](https://discord.gg/vqzKJK4STR). Please report security problems privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 
