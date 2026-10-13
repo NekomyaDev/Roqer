@@ -205,6 +205,11 @@ test("the SIM refresh loads with SIM routes and carries its measured fixes", asy
   assert.match(refresh, /local function makeItemTile\(parent, item\)/);
   assert.match(refresh, /CONTENT_W = content\.AbsoluteWindowSize\.X - 40/);
   assert.match(refresh, /parented to the tile's ICON/);
+  // Pets show their own model, framed in a ViewportFrame, not one icon per pet.
+  assert.match(refresh, /if item\.model then\s+art = framedModel\(item\.model\)/);
+  assert.match(refresh, /never go looking for one icon per pet/);
+  assert.match(refresh, /reward tiles \(`makeItemTile` with no name, a count\) at 76 px/);
+  assert.match(await read("references/validation/final-checklist.md"), /removes itself within seconds .* `execute_luau` on the client/);
   // Its one new asset is a public Creator Store decal, named with its image.
   assert.deepEqual([...new Set(assetIds(refresh))], ["14605469420"]);
   assert.match(refresh, /decal 14605469461 "Star Pattern"/);

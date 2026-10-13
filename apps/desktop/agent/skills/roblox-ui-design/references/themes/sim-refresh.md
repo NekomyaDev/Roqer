@@ -77,7 +77,21 @@ local function tileLabel(parent, text, anchor, position, size, align)
 	stroke.Thickness = 2.5
 	stroke.Parent = label
 end
-local function makeItemTile(parent, item) -- item = { name = "", icon = "rbxassetid://...", tier = "rare", count = 3 }
+local function framedModel(model) -- a pet or item model, framed front-on in a ViewportFrame
+	local view = Instance.new("ViewportFrame")
+	view.BackgroundTransparency = 1
+	local copy = model:Clone()
+	copy.Parent = view
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	local box, size = copy:GetBoundingBox()
+	local distance = (math.max(size.X, size.Y) / 2) / math.tan(math.rad(camera.FieldOfView / 2)) + size.Z / 2
+	camera.CFrame = CFrame.lookAt(box.Position + box.LookVector * distance + Vector3.new(0, size.Y * 0.15, 0), box.Position)
+	camera.Parent = view
+	view.CurrentCamera = camera
+	return view
+end
+local function makeItemTile(parent, item) -- item = { name = "", icon = "rbxassetid://..." or model = <Model>, tier = "rare", count = 3 }
 	local tile = Instance.new("Frame")
 	tile.BackgroundColor3 = Color3.new(1, 1, 1)
 	tile.Parent = parent
@@ -92,18 +106,23 @@ local function makeItemTile(parent, item) -- item = { name = "", icon = "rbxasse
 	shade.Rotation = 90
 	shade.Color = ColorSequence.new(TIERS[item.tier or "common"][1], TIERS[item.tier or "common"][2])
 	shade.Parent = tile
-	local art = Instance.new("ImageLabel")
+	local art
+	if item.model then
+		art = framedModel(item.model)
+	else
+		art = Instance.new("ImageLabel")
+		art.BackgroundTransparency = 1
+		art.Image = item.icon
+		art.ScaleType = Enum.ScaleType.Fit
+	end
 	art.Name = "Art"
-	art.BackgroundTransparency = 1
-	art.Image = item.icon
-	art.ScaleType = Enum.ScaleType.Fit
 	art.AnchorPoint = Vector2.new(0.5, 0.5)
 	art.Position = UDim2.fromScale(0.5, 0.56)
 	art.Size = UDim2.fromScale(0.8, 0.8)
 	art.ZIndex = 3
 	art.Parent = tile
 	if item.name and item.name ~= "" then -- over the art's top
-		tileLabel(art, item.name, Vector2.new(0.5, 0), UDim2.fromScale(0.5, -0.08), UDim2.fromScale(1.15, 0.26))
+		tileLabel(art, item.name, Vector2.new(0.5, 0), UDim2.fromScale(0.5, -0.08), UDim2.fromScale(1.25, 0.26))
 	end
 	if item.count then -- over the art's bottom-right corner
 		tileLabel(art, "x" .. item.count, Vector2.new(1, 1), UDim2.fromScale(1.08, 1.06), UDim2.fromScale(0.6, 0.3), Enum.TextXAlignment.Right)
@@ -112,6 +131,8 @@ local function makeItemTile(parent, item) -- item = { name = "", icon = "rbxasse
 end
 ```
 
+- **Pets and other owned models** show the model itself, as a real pet game does: pass `item.model` (the game's pet `Model`, e.g. from `ReplicatedStorage`) and the tile frames it in a `ViewportFrame` in place of the icon, with the name and count still over it. Use an icon only when the game has no models yet, and repeated placeholder art is then fine; never go looking for one icon per pet.
+- Names over the art stay short, about 12 characters at most: a longer name renders smaller than its neighbours. Put the full name in the detail strip or tooltip.
 - Tier colour comes from the item's rarity or value step. A shop row steps up through common, rare, epic, legendary and mythic; it is never all one colour.
 - An empty or locked slot is the same tile with the `grey` gradient from the recovered `GRADIENTS` (light end at the top) and no art, or a lock icon at 0.5.
 
@@ -139,12 +160,12 @@ end
 - **Measure the content width; never assume 1080p.** The body's `CONTENT_W = 1009` makes five cards wrap into rows of 3 and 2 in any smaller window (seen at 1350×832). After building `content`, wait a frame and use `CONTENT_W = content.AbsoluteWindowSize.X - 40` (the side padding). Set `content.VerticalScrollBarInset = Enum.ScrollBarInset.Always` so the scroll bar never covers a card.
 - Each section's grid: `CellSize = UDim2.fromOffset(cellW, cardHeight(cellW))`, `HorizontalAlignment = Center`, where `cellW` is the body's column math applied to the measured width. The holder's height is `cardHeight(cellW)` with `AutomaticSize` Y.
 
-**Banner** (the featured offer, `LayoutOrder = 1`, full content width, 150 px tall), as the studied starter packs are built:
+**Banner** (the featured offer, `LayoutOrder = 1`, full content width, 176 px tall), as the studied starter packs are built:
 - a white Frame, UICorner 0.1, navy UIStroke 4, and a two-stop gradient by offer (starter pack: `(255,220,60)` → `(255,140,20)`, rotation 90);
 - a child `ImageLabel` filling it with the pattern (`ImageTransparency` 0.8, untinted, same corner). Everything else is a child of this pattern layer;
 - the offer art big at the left: Fit, 0.9 of the banner height, 14 px in;
 - the name, white with a navy stroke 4, 44 px tall, top-left beside the art; a dark-amber `(120,60,0)` "Ends in: 58:43" line under it, no stroke;
-- two to four reward tiles (`makeItemTile` with no name, a count) at 56 px in a row under the name;
+- two to four reward tiles (`makeItemTile` with no name, a count) at 76 px in a row under the name, 8 px apart (at 56 px their counts were unreadable);
 - the green price button bottom-right, 150 × 52.
 
 ## 5. HUD: icons over the ends, gradient numbers

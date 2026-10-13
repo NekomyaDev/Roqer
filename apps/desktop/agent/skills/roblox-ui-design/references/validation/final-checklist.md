@@ -76,4 +76,5 @@ Use after implementation.
 - [ ] Structural/proportional defects fixed before cosmetic polish.
 - [ ] Interactive path tested with `interact_ui` or fresh coordinates when relevant.
 - [ ] Expected visible state asserted after input.
+- [ ] A message that removes itself within seconds (a toast, "Coming soon!") was checked with `execute_luau` on the client straight after the click: it exists and shows the right text. A screenshot arrives seconds later and cannot show it.
 - [ ] Retry loop remained bounded.
