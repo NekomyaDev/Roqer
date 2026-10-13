@@ -5,8 +5,8 @@ import { summarizeToolCall } from "../shared/mcp-tools";
 import type { RunEvent, RunEventBody } from "../shared/run-events";
 import { activitySteps, applyRunEvent, createRunView, type ActivityStep, type RunView } from "./run-view";
 import {
-  activeStepTitle, aggregateDuration, buildActivityModel, completedRunDurationLabel, completedRunMetadataLabel,
-  currentNodeTitle, elapsedLabel, outputTokensLabel, mergeFindings, stepStatus, type ActivityNode,
+  activeStepTitle, aggregateDuration, buildActivityModel, completedRunDetailsLabel, completedRunDurationLabel,
+  completedRunMetadataLabel, currentNodeTitle, elapsedLabel, outputTokensLabel, mergeFindings, stepStatus, type ActivityNode,
 } from "./activity-model";
 
 const RUN_ID = "run-1";
@@ -416,6 +416,14 @@ test("completed run metadata keeps its label when duration is unavailable", () =
   );
   assert.equal(completedRunMetadataLabel("Demo", startedAt, "2026-10-13T10:00:42.000Z"), "Demo · 42s");
   assert.equal(completedRunMetadataLabel("Full auto", startedAt, ""), "Full auto");
+});
+
+test("completed run details keep metadata and usage on one line", () => {
+  assert.equal(
+    completedRunDetailsLabel("Full auto · 4s", "Used 2.3k tokens: 2.3k input, 56 output · 1 request"),
+    "Full auto · 4s · Used 2.3k tokens: 2.3k input, 56 output · 1 request",
+  );
+  assert.equal(completedRunDetailsLabel("Full auto · 4s", null), "Full auto · 4s");
 });
 
 test("a live output count is marked as an estimate until the provider reports its own", () => {

@@ -335,6 +335,11 @@ export function completedRunMetadataLabel(label: string, startedAt: string, fini
   return `${label}${duration === null ? "" : ` · ${duration}`}`;
 }
 
+/** Completion metadata and optional provider usage as one reader-facing line. */
+export function completedRunDetailsLabel(metadata: string, usage: string | null): string {
+  return usage === null ? metadata : `${metadata} · ${usage}`;
+}
+
 /**
  * How much the model has written so far, beside the waiting clock.
  *

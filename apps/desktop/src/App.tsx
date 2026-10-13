@@ -30,7 +30,7 @@ import {
 import {
   activitySteps, applyRunEvent, createRunView, describeOutcome, recordAppliedAndVerified,
   recordGateIssues, recordHasWarnings, recordOnlyAnswered, recordSteps, runAppliedAndVerified,
-  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture, usageLabel,
+  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture,
   type ActivityStep, type PendingApproval, type RunView,
 } from "./run-view";
 import { EvidencePicture, rememberEvidencePicture } from "./evidence-picture";
@@ -60,6 +60,7 @@ import {
   aggregateDuration, buildActivityModel, completedRunMetadataLabel, currentNodeTitle,
   elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
 } from "./activity-model";
+import { CompletionLine } from "./completion-line";
 import {
   CONVERSATION_WINDOW_SIZE, earlierConversationWindowStart, initialConversationWindowStart,
 } from "./conversation-window";
@@ -72,7 +73,7 @@ import { describePolicyReason } from "../shared/policy";
 import { mcpServerMessage } from "../shared/mcp-server";
 import { appUpdateMessage, canInstallUpdate, updateInProgress } from "../shared/app-update";
 import type {
-  RunChange, RunEvent, RunEvidence, RunMetadata, RunOutcome, RunRecord, RunStartRequest, RunUsage,
+  RunChange, RunEvent, RunEvidence, RunMetadata, RunOutcome, RunRecord, RunStartRequest,
 } from "../shared/run-events";
 import { connectedStudios, resolveInstanceId } from "../shared/studio-status";
 import type { StorageStatus } from "../shared/workspace-storage";
@@ -1964,11 +1965,10 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       warnings={runHasWarnings(view)}
       // Once the answer is on screen, repeating it on the card says nothing.
       summary={view.outcome === "completed" && answered ? runFacts(view) : view.summary}
-      note={[completionNote, failureNote(view.failures.length)].filter(Boolean).join(" · ")}
+      note={failureNote(view.failures.length)}
       issues={runGateIssues(view)}
     />}
-    {!running && !showOutcome && <p className="run-completion-metadata">{completionNote}</p>}
-    {view.usage !== null && <UsageLine usage={view.usage} />}
+    {!running && <CompletionLine metadata={completionNote} usage={view.usage ?? undefined} />}
     {view.desynchronized && <p className="run-warning"><AlertCircle size={14} /> Some updates were missed, so this timeline may be incomplete.</p>}
   </div></section></div>;
 }
@@ -2435,20 +2435,6 @@ const ChangeSet = memo(function ChangeSet({ groups, expansion, onOpenInStudio }:
   </div>;
 });
 
-/**
- * What a finished run used, under its outcome. Its own line rather than part
- * of the outcome card, because a run that applied and verified its change, or
- * only answered, shows no card, and those are runs worth measuring too.
- */
-function UsageLine({ usage }: { usage: RunUsage }) {
-  return <p
-    className="run-usage"
-    title={usage.costUsd === undefined
-      ? "As the provider reported it."
-      : "As the provider reported it. The price is its estimate at API list prices; on a subscription it is not what you pay."}
-  >{usageLabel(usage)}</p>;
-}
-
 function AppliedStatus() {
   return <div className="applied-status"><Check size={14} /><span>Applied and verified in Studio</span></div>;
 }
@@ -2588,11 +2574,10 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
       outcome={record.outcome}
       warnings={warnings}
       summary={countLine(record.toolCalls.length, record.changes.length, failed)}
-      note={outcomeNote}
+      note={failureNote(failed)}
       issues={recordGateIssues(record)}
     />}
-    {!showOutcome && <p className="run-completion-metadata">{outcomeNote}</p>}
-    {record.usage !== undefined && <UsageLine usage={record.usage} />}
+    <CompletionLine metadata={outcomeNote} usage={record.usage} />
   </>;
 }
 
