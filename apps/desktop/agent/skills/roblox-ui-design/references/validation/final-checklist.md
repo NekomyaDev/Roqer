@@ -5,7 +5,8 @@ Use after implementation.
 ## Structure
 - [ ] Creation vs edit was correctly identified.
 - [ ] Exactly one semantic layout selected for new UI.
-- [ ] With SIM/STUDS, the recovered theme body and matching recovered selected layout body were loaded and followed.
+- [ ] With SIM or CLASSIC STUDS, the recovered theme body and matching recovered selected layout body were loaded and followed.
+- [ ] With MODERN STUDS, both theme parts and the matching `selected/modern-studs/<layout>.md` body were loaded and followed.
 - [ ] Ordinary builder starts with the layout marker; canonical templates preserve their managed prefix before it.
 - [ ] Specialized layout used exact template deployment, not hand-authored geometry.
 - [ ] Existing UI edit did not create a second builder or ScreenGui.
@@ -49,7 +50,7 @@ Use after implementation.
 - [ ] Straddling red close.
 - [ ] Sticker buttons carry the required Border-mode navy stroke and action-semantic gradient.
 
-## STUDS
+## CLASSIC STUDS
 - [ ] Square four-layer bevel construction from the recovered body.
 - [ ] Black stroke 4 on visible component bases.
 - [ ] Non-title faces keep the required vertical shine/gradient.
@@ -58,6 +59,16 @@ Use after implementation.
 - [ ] Integral asset IDs used exactly.
 - [ ] Interactive targets meet minimum size.
 
+## MODERN STUDS
+- [ ] Every block was built with the theme's `makeSurface`: rounded, black-outlined, lipped, gradient face with tinted studs.
+- [ ] One panel variant on the screen (Dark band or Light straddling title); close is the red tile with a white X.
+- [ ] No stud pixels outside a rounded corner in the screenshot.
+- [ ] Every item art sits on the sunburst; Robux prices use the text glyph.
+- [ ] Exactly one active tab at full colour and width, the rest dimmed in their own colours; tab rails sit outside the panel edge, on the right by default.
+- [ ] Panels opened with blur and pop; HUD, sidebar, clicker, and toast screens did not blur.
+- [ ] Only part 1's asset IDs, `resolve_icon` results, or verified project art; no other game's sprites.
+- [ ] A wheel used `templates/modern-studs/wheel-spin.lua` with only `CONFIG` changed; a reel used the CLASSIC STUDS template unchanged, and the reply said so.
+
 ## Validation
 - [ ] `inspect_ui` audit ran on the live client after the last interface change and reported no problems (Roqer will not verify the run otherwise).
 - [ ] The latest post-mutation screenshot was successfully delivered before visual claims were made.
@@ -65,4 +76,5 @@ Use after implementation.
 - [ ] Structural/proportional defects fixed before cosmetic polish.
 - [ ] Interactive path tested with `interact_ui` or fresh coordinates when relevant.
 - [ ] Expected visible state asserted after input.
+- [ ] A message that removes itself within seconds (a toast, "Coming soon!") was checked with `execute_luau` on the client straight after the click: it exists and shows the right text. A screenshot arrives seconds later and cannot show it.
 - [ ] Retry loop remained bounded.

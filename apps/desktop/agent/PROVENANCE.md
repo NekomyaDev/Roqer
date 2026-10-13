@@ -113,6 +113,20 @@ As of 2026-09-13 the shipped UI skill preserves the recovered SIM/STUDS **base t
 
 On 2026-09-23 the repository added `references/core/polish.md`, a polish layer of presentation motion, merchandising states, and finishing detail that sits on top of the recovered themes. It is repository-authored under the repository's licence. To make room for it, the "no RunService or TweenService" sentence in `themes/recovered/sim-1.md` and `studs-1.md` was changed to allow that presentation motion; no other recovered construction or geometry rule changed.
 
+On 2026-10-11 the repository added the MODERN STUDS theme: `references/themes/modern-studs.md`, `references/themes/modern-studs/part-1.md` and `part-2.md`, and the 14 `references/selected/modern-studs/<layout>.md` bodies. They are repository-authored under the repository's licence, from a study of the UI of two published Roblox games (screen recordings and UI hierarchy captures). They ship no art, sprites, or code from those games. Their asset IDs are the repository's existing theme and catalog IDs plus two public Creator Store stud decals, each named with its decal and image ID. Layouts the study did not cover carry their geometry from the recovered STUDS bodies. The same day, after two Studio benchmark runs (a shop and a rebirth dialog), MODERN STUDS became the default stud theme and the recovered STUDS theme is named CLASSIC STUDS in routing; the recovered files themselves are unchanged apart from a one-line note in `themes/studs.md`.
+
+Also on 2026-10-11 the repository added `templates/modern-studs/wheel-spin.lua`, the MODERN STUDS prize wheel. It is repository-authored, not part of the handoff: it is the CLASSIC STUDS wheel template with its button and label builders replaced by the MODERN STUDS surface kit from `themes/modern-studs/part-1.md`. Its managed prefix, `CONFIG` API, wheel chrome asset IDs, wedge geometry, sounds and spin animation are copied unchanged from `templates/studs/wheel-spin.lua`. No sprite from the studied games is used. The CLASSIC and SIM templates are unchanged.
+
+Also on 2026-10-11 the repository added `references/themes/sim-refresh.md`, repository-authored from a study of three published simulator games: screen recordings of all three and a UI hierarchy capture of one. It updates the recovered SIM theme without editing it:
+- a faint pattern on the card;
+- a lower drop shadow;
+- big item art with labels over it;
+- tier-coloured item tiles;
+- a measured shop width;
+- HUD icons over the ends of pills and tiles.
+
+It ships no art or code from those games. Its one new asset is the public Creator Store decal 14605469461 "Star Pattern" by 28Pixels, used by its image ID 14605469420. To fit the SIM route with the refresh in one batch, the desktop runtime's `load_skill` limit rose from 8 to 10 resources per call.
+
 Legacy tool/deployment names that appear inside recovered bodies are provenance from the source environment, not Roqer capabilities. `SKILL.md`, current core references, the desktop developer instructions, and specialized contract/template files define execution in Roqer.
 
 The supplied archive identifies captured payload hashes but declares no licence or original rights holder. Do not represent this material as part of `roblox-brain` or as repository-authored. The agent manifest lists `roblox-ui-design` as customized so this provenance boundary is visible to release review.

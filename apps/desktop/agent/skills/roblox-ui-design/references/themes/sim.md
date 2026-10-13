@@ -14,6 +14,8 @@ Pet-simulator-like rounded cartoon UI:
 
 No title bar exists in this theme.
 
+`references/themes/sim-refresh.md` updates this theme from a study of three simulator games: a faint pattern on the card, a lower drop shadow, big art with labels over it, tier-coloured item tiles, and HUD icons over the ends of pills and tiles. Where it differs from the guide below or the recovered parts, it wins.
+
 ## Canonical dialog scaffold
 
 For dialog/panel layouts:

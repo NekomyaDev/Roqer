@@ -36,7 +36,7 @@ sources:
 
 Load this skill only for the engine side of UI when the request materially needs container behavior, responsive containment, input/focus, safe areas, scrolling/lifecycle, state ownership, or game wiring. A straightforward static visual screen already covered by `roblox-ui-design` does not need this skill.
 
-Building or editing the visual composition of a screen is `roblox-ui-design`'s job. When a recovered SIM/STUDS theme+layout body is active, that body owns panel/card geometry, density, placement, and visual construction.
+Building or editing the visual composition of a screen is `roblox-ui-design`'s job. When a SIM, MODERN STUDS, or CLASSIC STUDS theme+layout body is active, that body owns panel/card geometry, density, placement, and visual construction.
 
 ## Quick Reference
 
