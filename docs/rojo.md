@@ -110,13 +110,16 @@ from follower processes are delegated to that primary while retaining their
 own binding state. Project-aware `build_instances` and `set_properties` calls
 use that same client context, so a follower does not lose its project's save
 route. Their structural saves keep the verification described below; they do
-not themselves add new records to this source-edit ledger. A plain client keeps
+not themselves add new records to this source-edit ledger. A follower's
+parallel source calls run one at a time in arrival order. A plain client keeps
 the existing synchronous dispatch path.
 
 Relative project paths use the caller's working directory. Delegation carries a
 bounded set of host variables for PATH, home/configuration locations and Git
 ownership checks, without forwarding provider keys, proxy credentials or
-arbitrary custom CLI variables. Git must be available in that caller context;
+arbitrary custom CLI variables. Because the primary runs Rojo and Git with
+those values, it accepts delegation only from this machine, even when
+`ROBLOX_STUDIO_HOST` exposes the bridge further. Git must be available in that caller context;
 a failed Git check cannot classify an ignored file as writable. The default
 project still has one link attempt per process: a reported failure leaves it
 unlinked, as before. Use an explicit link after repairing the configuration.

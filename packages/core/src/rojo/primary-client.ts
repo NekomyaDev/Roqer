@@ -18,6 +18,8 @@ export class RojoProxyState {
   uncertain?: RojoDelegateRequest;
   intent: boolean;
   busy = false;
+  /** This client's source calls run one at a time, in arrival order; agents issue them in parallel. */
+  queue: Promise<unknown> = Promise.resolve();
   constructor(readonly defaultProject?: string) { this.intent = defaultProject !== undefined; }
 }
 
@@ -60,8 +62,15 @@ export class RojoPrimaryClient {
     this.accept(reply, pending);
   }
 
-  private async run(kind: 'call' | 'prepare', toolName?: string, args?: Record<string, unknown>): Promise<SourceToolResult | undefined> {
-    if (this.state.busy) return refusal('rojo_client_busy', 'This client has a source operation in progress; wait for its result.');
+  private run(kind: 'call' | 'prepare', toolName?: string, args?: Record<string, unknown>): Promise<SourceToolResult | undefined> {
+    // Each call starts from the checkpoint the previous one acknowledged, so
+    // parallel calls wait their turn instead of being refused as busy.
+    const turn = this.state.queue.then(() => this.runNow(kind, toolName, args));
+    this.state.queue = turn.catch(() => undefined);
+    return turn;
+  }
+
+  private async runNow(kind: 'call' | 'prepare', toolName?: string, args?: Record<string, unknown>): Promise<SourceToolResult | undefined> {
     this.state.busy = true;
     try {
       const capability = await this.transport.rojoCapabilities();

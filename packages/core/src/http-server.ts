@@ -288,6 +288,13 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   }, body.instance_id),
 };
 
+/** A socket peer on this machine: 127.0.0.0/8 or ::1, including IPv4-mapped IPv6. */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const v4 = address.toLowerCase().startsWith('::ffff:') ? address.slice(7) : address;
+  return v4 === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4);
+}
+
 export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService, allowedTools?: Set<string>, serverConfig?: StreamableHttpConfig, security?: HttpSecurityOptions): RobloxStudioHttpApp {
   // Express cannot know about the lifecycle controls attached below.
   const app = express() as unknown as RobloxStudioHttpApp;
@@ -796,6 +803,15 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
     res.json({ success: true, disposition });
   });
 
+
+  // Source delegation runs Rojo and Git on this host with the caller's cwd and
+  // environment. Followers always reach the primary at localhost, so a caller
+  // from another machine (ROBLOX_STUDIO_HOST beyond loopback) is refused even
+  // with a valid token: the token drives Studio, never this host's processes.
+  app.use('/proxy-rojo', (req, res, next) => {
+    if (isLoopbackAddress(req.socket.remoteAddress)) { next(); return; }
+    res.status(403).json({ error: 'loopback_required', message: 'Source delegation is only accepted from this machine.' });
+  });
 
   app.get('/proxy-rojo', (_req, res) => {
     res.json({ protocol: ROJO_DELEGATE_PROTOCOL, epoch: rojoOwner.epoch });

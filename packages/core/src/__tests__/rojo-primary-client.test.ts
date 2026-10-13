@@ -81,6 +81,36 @@ describe('source authority acknowledgments (simulated primary transport)', () =>
     expect(state.uncertain).toBeDefined();
   });
 
+  test('parallel source calls and a start from one client run in turn instead of being refused', async () => {
+    const state = new RojoProxyState('default.project.json');
+    let inFlight = 0, maxInFlight = 0, version = 0;
+    const seen: number[] = [];
+    const transport: RojoDelegateTransport = {
+      rojoCapabilities: async () => ({ protocol: 1, epoch }),
+      rojoRequest: async packet => {
+        inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight);
+        seen.push(packet.state.version);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        inFlight -= 1;
+        version += 1;
+        return { protocol: 1, epoch, applied: true, state: { version, defaultAttempted: true, bindings: [] }, result: result({ source: `read ${version}` }) };
+      },
+    };
+    const client = new RojoPrimaryClient(transport, state);
+    const replies = await Promise.all([
+      client.invoke('get_script_source', { instancePath: 'game.A' }),
+      client.invoke('get_script_source', { instancePath: 'game.B' }),
+      client.prepareStart('/api/start-playtest'),
+      client.invoke('get_script_source', { instancePath: 'game.C' }),
+    ]);
+    expect(maxInFlight).toBe(1);
+    // Each packet carries the checkpoint its predecessor acknowledged.
+    expect(seen).toEqual([0, 1, 2, 3]);
+    expect(replies.filter(reply => reply && 'content' in reply).map(reply => errorCode(reply as { content: Array<{ text: string }> }))).toEqual([undefined, undefined, undefined]);
+    expect(state.checkpoint.version).toBe(4);
+    expect(state.busy).toBe(false);
+  });
+
   test('non-source lifecycle calls never use the private source protocol', () => {
     const transport = { rojoCapabilities: jest.fn(), rojoRequest: jest.fn() };
     const client = new RojoPrimaryClient(transport, new RojoProxyState('default.project.json'));
