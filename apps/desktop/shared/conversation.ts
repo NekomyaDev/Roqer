@@ -33,11 +33,18 @@ export const MAX_MESSAGE_ATTACHMENTS = 64;
 export type ConversationContext = {
   messages: ConversationMessage[];
   truncated: boolean;
+  /**
+   * The record of earlier messages a manual compact folded out of this chat.
+   * It stands in for those messages and comes before them.
+   */
+  summary?: string;
 };
 
 export const MAX_CONVERSATION_MESSAGES = 48;
 export const MAX_CONVERSATION_MESSAGE_CHARS = 16_000;
 export const MAX_CONVERSATION_CHARS = 64_000;
+/** A compact's record: an outline of a long chat, a small part of the transcript budget. */
+export const MAX_COMPACT_SUMMARY_CHARS = 8_000;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -51,9 +58,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * means the most recent run's record is the one most likely to be kept, which
  * is the one a follow-up is most likely to be about.
  */
-export function boundConversation(messages: readonly ConversationMessage[]): ConversationContext {
+export function boundConversation(messages: readonly ConversationMessage[], summary?: string): ConversationContext {
   const boundedNewestFirst: ConversationMessage[] = [];
-  let totalChars = 0;
+  // The record counts against the same budget as the words it replaces.
+  let totalChars = summary?.length ?? 0;
   let truncated = false;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -86,7 +94,11 @@ export function boundConversation(messages: readonly ConversationMessage[]): Con
   }
 
   if (boundedNewestFirst.length < messages.length) truncated = true;
-  return { messages: boundedNewestFirst.reverse(), truncated };
+  return {
+    messages: boundedNewestFirst.reverse(),
+    truncated,
+    ...(summary === undefined ? {} : { summary }),
+  };
 }
 
 /** Marks where the middle of a long reply was left out. */
@@ -122,8 +134,10 @@ function isMessageAttachments(value: unknown): value is MessageAttachments {
 export function isConversationContext(value: unknown): value is ConversationContext {
   if (!isRecord(value) || typeof value.truncated !== "boolean" || !Array.isArray(value.messages)) return false;
   if (value.messages.length > MAX_CONVERSATION_MESSAGES) return false;
+  if (value.summary !== undefined &&
+    (typeof value.summary !== "string" || value.summary.length > MAX_COMPACT_SUMMARY_CHARS)) return false;
 
-  let totalChars = 0;
+  let totalChars = typeof value.summary === "string" ? value.summary.length : 0;
   for (const message of value.messages) {
     if (!isRecord(message) || (message.role !== "user" && message.role !== "assistant")) return false;
     if (typeof message.text !== "string" || message.text.length > MAX_CONVERSATION_MESSAGE_CHARS) return false;

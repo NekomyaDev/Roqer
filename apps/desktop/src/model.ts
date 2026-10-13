@@ -15,6 +15,7 @@ export type Theme = "light" | "dark";
 // definition lives next to the policy rules that consume it.
 export type { ApprovalMode } from "../shared/policy";
 import type { ApprovalMode } from "../shared/policy";
+import { isChatCompaction, type ChatCompaction } from "../shared/chat-compaction";
 
 export type AssetAttachment = {
   id: string;
@@ -71,6 +72,11 @@ export type Chat = {
    */
   studioInstanceId?: string;
   messages: ChatMessage[];
+  /**
+   * The chat's earlier messages, folded into a record by a manual compact. Only
+   * the model's view changes: every message stays on screen.
+   */
+  compaction?: ChatCompaction;
 };
 
 export type Project = {
@@ -303,6 +309,19 @@ export function normalizeWorkspace(value: unknown, themeFallback: Theme = "dark"
         typeof chat.createdAt !== "string" ||
         typeof chat.updatedAt !== "string" ||
         !Array.isArray(chat.messages)) return [];
+      const messages = chat.messages.flatMap(normalizeMessage);
+      // A compact that folds more messages than the chat holds is not a record
+      // of this chat, so it is dropped and the chat is sent in full again.
+      const compaction = isChatCompaction(chat.compaction) && chat.compaction.folded <= messages.length
+        ? {
+          folded: chat.compaction.folded,
+          summary: chat.compaction.summary,
+          ...(chat.compaction.usedTokens === undefined ? {} : {
+            usedTokens: chat.compaction.usedTokens,
+            windowTokens: chat.compaction.windowTokens ?? null,
+          }),
+        }
+        : undefined;
       return [{
         id: chat.id,
         title: chat.title,
@@ -312,7 +331,8 @@ export function normalizeWorkspace(value: unknown, themeFallback: Theme = "dark"
         studioInstanceId: typeof chat.studioInstanceId === "string" && chat.studioInstanceId !== ""
           ? chat.studioInstanceId
           : undefined,
-        messages: chat.messages.flatMap(normalizeMessage),
+        messages,
+        ...(compaction === undefined ? {} : { compaction }),
       }];
     });
 
@@ -606,6 +626,20 @@ export function deleteProject(state: WorkspaceState, projectId: string): Workspa
   const projects = state.projects.filter((project) => project.id !== projectId);
   if (projects.length === state.projects.length) return state;
   return repairSelection({ ...state, projects });
+}
+
+/** Record a manual compact on one chat. The messages themselves are untouched. */
+export function setChatCompaction(state: WorkspaceState, projectId: string, chatId: string, compaction: ChatCompaction): WorkspaceState {
+  return {
+    ...state,
+    projects: state.projects.map((project) => {
+      if (project.id !== projectId) return project;
+      return {
+        ...project,
+        chats: project.chats.map((chat) => (chat.id === chatId ? { ...chat, compaction } : chat)),
+      };
+    }),
+  };
 }
 
 export function appendMessage(state: WorkspaceState, projectId: string, chatId: string, message: ChatMessage): WorkspaceState {

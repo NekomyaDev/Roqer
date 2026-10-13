@@ -91,7 +91,7 @@ claude mcp add robloxstudio -- node C:\path\to\Roqer\packages\robloxstudio-mcp\d
 What Roqer is working toward. Plans can change; [open an issue](https://github.com/S4US/Roqer/issues) to suggest something.
 
 - MacOS support
-- Manual compact command https://github.com/S4US/Roqer/issues/63
+- Model-written compact summaries. Manual compact (https://github.com/S4US/Roqer/issues/63) writes its record from what the chat recorded; a model could write a fuller one.
 - Add custom MCP connections
 - Web search. An optional switch that lets the model search the web during a run, with each search shown in the run's activity.
 

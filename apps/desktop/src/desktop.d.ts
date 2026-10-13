@@ -108,6 +108,9 @@ declare global {
         cancelStart(startId: string): Promise<void>;
         subscribe(listener: (event: RunEvent) => void): () => void;
       };
+      chats: {
+        compact(chatId: string): Promise<boolean>;
+      };
       app: {
         getDataPath(): Promise<string>;
         version(): Promise<string | null>;
