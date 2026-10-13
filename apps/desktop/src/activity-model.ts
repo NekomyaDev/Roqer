@@ -313,7 +313,7 @@ function persistedTimestamp(value: string): number | null {
 export function completedRunDurationLabel(startedAt: string, finishedAt: string): string | null {
   const started = persistedTimestamp(startedAt);
   const finished = persistedTimestamp(finishedAt);
-  if (started === null || finished === null || finished < started) return null;
+  if (started === null || finished === null || finished <= started) return null;
 
   const seconds = Math.floor((finished - started) / 1_000);
   if (seconds < 60) return `${seconds}s`;

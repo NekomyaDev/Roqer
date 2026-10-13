@@ -2564,9 +2564,8 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
   const onlyAnswered = recordOnlyAnswered(record, text);
   const showOutcome = !appliedAndVerified && !onlyAnswered;
   const duration = completedRunDurationLabel(record.startedAt, record.finishedAt);
-  const outcomeNote = record.planner === DEMO_PLANNER
-    ? "Demo"
-    : `${record.approvalMode}${duration === null ? "" : ` · ${duration}`}`;
+  const baseNote = record.planner === DEMO_PLANNER ? "Demo" : record.approvalMode;
+  const outcomeNote = `${baseNote}${duration === null ? "" : ` · ${duration}`}`;
   const steps = useMemo(() => recordSteps(record), [record]);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
   return <>

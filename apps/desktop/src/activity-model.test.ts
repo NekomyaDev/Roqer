@@ -392,7 +392,7 @@ test("a completed run duration uses compact units", () => {
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:00:42.000Z"), "42s");
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:08:34.000Z"), "8m 34s");
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T11:12:34.000Z"), "1h 12m");
-  assert.equal(completedRunDurationLabel(startedAt, startedAt), "0s");
+  assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:00:00.999Z"), "0s");
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T10:01:00.000Z"), "1m");
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T11:00:00.000Z"), "1h");
 });
@@ -404,6 +404,7 @@ test("a completed run duration is omitted when its timestamps cannot be trusted"
   assert.equal(completedRunDurationLabel(startedAt, "not-a-date"), null);
   assert.equal(completedRunDurationLabel("2026-02-30T10:00:00.000Z", "2026-03-02T10:00:42.000Z"), null);
   assert.equal(completedRunDurationLabel("0", "1"), null);
+  assert.equal(completedRunDurationLabel(startedAt, startedAt), null);
   assert.equal(completedRunDurationLabel(startedAt, "2026-10-13T09:59:59.000Z"), null);
 });
 
