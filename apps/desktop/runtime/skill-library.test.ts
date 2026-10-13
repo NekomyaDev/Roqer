@@ -41,6 +41,18 @@ test("skill library discovers frontmatter and loads entrypoints and linked refer
   }
 });
 
+test("a resource checked out with Windows line endings loads as the same text as on Linux", async () => {
+  const root = await fixture();
+  try {
+    await fs.writeFile(path.join(root, "roblox-test", "references", "full.md"), "# Full reference\r\n\r\nA line.\r\n");
+    const library = await openSkillLibrary(root);
+    const reference = await library.load("roblox-test", "references/full.md");
+    assert.equal(reference.content, "# Full reference\n\nA line.\n");
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("skill library loads canonical Lua templates without opening arbitrary code files", async () => {
   const root = await fixture();
   try {
