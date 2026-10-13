@@ -13,16 +13,10 @@ held forms in `vfx-motion.md`; camera, screen and world reactions in
 Depart from it when the effect calls for it.
 
 How far to trust a number:
-- *(measured)*: from three studies of published effects and textures by
-  experienced Roblox VFX artists.
-  - The first covered 22 effects: 3,950 particle emitters, their scripts and
-    videos of them playing.
-  - The second covered 27 effects: skills, showcases, practice pieces and a
-    hand-drawn texture set, plus a tutorial by the artist snaliel.
-  - A third looked at every texture in a widely shared community particle
-    kit: 1,108 textures sorted into shines, sparkles, shapes, rings,
-    symbols, beams and trails, fogs and nature.
-  - A fourth measured the 1,215 textures behind 4,950 particle emitters.
+- *(measured)*: from studies of published effects by experienced Roblox VFX
+  artists: 49 effects (5,010 particle emitters and 1,215 of their textures),
+  their videos, a hand-drawn texture set, a 1,108-texture community kit and a
+  tutorial by the artist snaliel.
 - *(verified)*: checked in Studio.
 - *(starting point)*: common practice; tune it by looking.
 
@@ -62,10 +56,9 @@ How far to trust a number:
   Brightness 12-60, read as a burst *(verified)*. It still read as a splash
   rather than an eruption: size and brightness are not the whole fix.
 - **Borrow the rhythm and silhouette of a reference, not its colour.** The
-  studied fan pieces read clearly as Gojo's Reversal Red, a Kamehameha, a
-  Katon fire dragon, a Gate of Babylon volley and Ayato's sword kit:
-  - each keeps its move's beats, shape and scale;
-  - colour may change (the Ayato piece is amber, not Hydro blue).
+  studied fan pieces (Gojo's Reversal Red, a Kamehameha, Ayato's sword kit)
+  keep their move's beats, shape and scale, and may change colour: the Ayato
+  piece is amber, not Hydro blue.
 - **Decide the dominant shape.** In the tutorial's example the defining
   choice is flat: a wide spiral on the ground, which reads instantly as an
   area attack. A vertical column reads as a pillar; a forward cone reads as a
@@ -110,9 +103,14 @@ How far to trust a number:
   black over its life, for example `#ffcb47` to `#71ff54` at 0.24, `#143b16`
   at 0.45 and `#031107`.
 - At `LightEmission` 0 the dark tail renders as solid dark shapes, so the
-  effect gets its darks without a separate black layer.
-- Fire gradients end in black, and may start blue or violet for the first
-  10-25% of life.
+  effect gets its darks without a separate black layer. It suits a sheet
+  that has broken into fragments by then, as 82% of the studied ones have.
+  On a whole puff it is a black blob.
+- Fire mostly stays in its hue and deepens to red (87% of 1,391 fire layers),
+  and may start blue or violet for the first 10-25% of life. Ending in black
+  is one artist's slash fire.
+- `#2b190c` at Brightness 15-65 is a glowing brown, not black: read a colour
+  as Color × Brightness.
 
 **Smoke and white:**
 - **Smoke beside fire takes the fire's colour** where the fire lights it:
@@ -121,8 +119,9 @@ How far to trust a number:
   - or a puff drawn with its colours baked in.
 
   One flat dark tone reads as a cut-out.
-- **Smoke away from fire** comes in warm and grey pairs, lit by the scene
-  (`LightInfluence` 0.35-2).
+- **Smoke away from fire** comes in warm and grey pairs. Most studied smoke
+  is self-lit, mid-grey and about half transparent; dark smoke is a faint
+  veil, never a dense black puff (`vfx-explosions.md`).
 - **White is kept** for thin shapes: rings, flares, winds, crescents and the
   hottest core (section 3).
 - **Lights take the palette too.** One PointLight per hue tints the
@@ -233,13 +232,19 @@ How one orange shape renders under a new place's lighting *(verified)*:
 | `LightEmission` -1 to -3 | Saturated, solid | Saturated, solid, with a dark rim |
 
 - **Hard cel shapes:** `LightEmission` 0 or negative with Brightness 5-55.
-  Solid fire bodies go to Brightness 25-100 at `LightEmission` -1 to -5.
+  Fire bodies sit near Brightness 5 at `LightEmission` 0-0.5; two studied
+  pieces push them to 25-100 at -1 to -5.
 - **Glows and halos:** `LightEmission` 1 at Brightness 1-6, often below 1.
-  Their job is the bloom around a shape. Four-point flares run at 5-12
-  *(measured)*.
-- **Glow-first is a different style.** One studied artist ran `LightEmission`
-  1 on more than half the layers, with fractional values as a mixing dial and
-  colour-correction frames on top. It works in a dark scene.
+  Soft ones are about two-thirds transparent: the sharp shapes carry the
+  brightness (median 4), the glow only blooms around them. Four-point flares
+  run at 5-12 *(measured)*.
+- **Colour in daylight is solid.** Additive layers only lighten what is
+  behind them: over a bright sky violet goes pastel, then white. 58% of
+  studied saturated layers are solid (`LightEmission` 0.3 or less); additive
+  is for thin highlights and small glows. A mostly additive magic run came
+  back 74-85% pale, studied videos 2-21% *(measured)*.
+- **Glow-first** (`LightEmission` 1 on most layers, one studied artist's
+  style) works in a dark scene.
 - **The white-hot core:** one or two front layers at Brightness 50-150, with a
   shape (spikes, a star or a ring), lasting 0.03-0.1 s.
 - **Neon mesh flashes** run hotter: Brightness 78 falling to 27 by 7% of
@@ -256,7 +261,8 @@ How one orange shape renders under a new place's lighting *(verified)*:
   - one hit in the studied slashes has 40-60 distinct layers;
   - a small orb is 17 layers on one attachment;
   - the median `EmitCount` is 1, and 37% of emitters have Speed near 0:
-    sprites stacked and timed in place.
+    sprites stacked and timed in place;
+  - 20 of 48 files add glowing meshes too (`vfx-mesh-shapes.md`).
 - **Big counts are for scatter:** sparks, droplets, debris and dots at 10-160
   a burst. Sustained beams and trails use `Rate` 15-2000.
 
@@ -310,7 +316,7 @@ From the tutorial *(measured)*, in four rules:
 
   **The mass comes from body layers that outlive the flash.** In the studied
   explosions, crescents, flame tongues and puffs carry the effect from 0.1 to
-  0.6 s *(measured)*:
+  0.6 s, as flipbooks, never one image scaling *(measured)*:
   - a practice explosion's crescents grow from 2 to 19 studs over 0.36-0.55
     s, and its smoke holds 20 studs for 0.6-1.2 s;
   - a fireball skill's crescents grow to 125 studs over 0.35-0.55 s.
@@ -334,7 +340,8 @@ Typical lifetimes *(measured)*:
 | Crescents and slashes | 0.15-0.4 s |
 | An explosion's body (crescents, tongues, puffs) | 0.35-1.2 s |
 | Rings and debris | 0.4-1.4 s |
-| Smoke and ground marks | 1-3 s, scorch up to 6 s |
+| Smoke | 0.5-1.5 s in a hit; 3-7 s for a slam's last cloud |
+| Ground marks | 1-3 s, scorch up to 6 s |
 
 **Before the hit:**
 - **Anticipation:** 0.1-0.6 s before the hit, for a bigger move up to 1.35 s.
@@ -382,12 +389,16 @@ Typical lifetimes *(measured)*:
   - 25-60 at Drag 6;
   - streaks at 1000-2000 lasting 0.1-0.2 s.
 
-  Constant slow drift reads as floaty. Debris falls at an `Acceleration` of
-  -15 to -27.
+  Constant slow drift reads as floaty. Light bits fall at an `Acceleration`
+  of -15 to -27, rocks at -60 to -200.
 - **Size pops.** `0:0, 0.1:peak, 1:0` for debris. A flash starts big and
   shrinks. Rings grow on an ease-out. A one-frame `Squash` pop at spawn (2 to
   0 by 2% of life) gives an orb a snap.
-- **Spread from one key.** A size of `m ± m` gives sizes from 0 to 2m.
+- **Each particle its own size.** 51% of studied emitters, in 37 of 39
+  files, give their Size keys an `envelope`, a random ± per particle, a
+  median third of the peak *(measured)*. `{ "time": 0.1, "value": 6,
+  "envelope": 2 }` spreads 4-8, and `m ± m` 0 to 2m. Without one, a layer's
+  particles match in size at every age, which looks machine-made.
 - **Hold, then snap.**
   - Transparency held at 0 for the first 27-30% of life, then snapping to 0.8
     by about 36%.

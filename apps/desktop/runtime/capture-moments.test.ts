@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { captureMoments, momentLuau, parseCaptureMoments, preloadLuau, stopLuau, type ContactSheet } from "./capture-moments";
+import { captureMoments, liveLuau, liveProbeLuau, momentLuau, parseCaptureMoments, preloadLuau, stopLuau, type ContactSheet } from "./capture-moments";
 import type { ClipManifest } from "./clip-store";
 import type { StudioCaller } from "./local-operations";
 import type { McpCallOptions, McpToolOutcome } from "./mcp-types";
@@ -27,7 +27,7 @@ function fakeStudio(overrides: { start?: McpToolOutcome; reached?: (time: number
     if (code.includes("pcall(h.stop")) return ok({ returnValue: "stopped" });
     if (code.includes("PreloadAsync")) return ok({ returnValue: overrides.preload ?? "loaded" });
     const wanted = /local target = ([\d.]+)/.exec(code);
-    if (wanted) return ok({ returnValue: overrides.reached?.(Number(wanted[1])) ?? `${Number(wanted[1]).toFixed(3)}|done` });
+    if (wanted) return ok({ returnValue: overrides.reached?.(Number(wanted[1])) ?? `${Number(wanted[1]).toFixed(3)}|done|held` });
     return overrides.start ?? ok({ returnValue: "" });
   };
   return { studio, calls };
@@ -59,7 +59,12 @@ test("a moment travels at normal speed, slows for the last stretch, holds when a
   // A finished handle has restored what it changed; it is never scaled again.
   assert.match(held, /local function scale\(speed\) if h\.finished ~= true then h:setTimeScale\(speed\) end end/);
   assert.doesNotMatch(held.replace(/local function scale[^\n]*\n/, ""), /h:setTimeScale/);
+  // Two frames after holding, the clock is read again: a handle whose setTimeScale(0) does not stop it is caught.
+  assert.match(held, /local reached = clock\(\)\nlocal holding = "held"\nif h\.finished ~= true then task\.wait\(\) task\.wait\(\) if clock\(\) ~= reached then holding = "runs" end end/);
+  assert.match(held, /return string\.format\("%\.3f\|%s\|%s", reached, status, holding\)/);
   const trail = momentLuau("vfx", 1.2, 0.04, false);
+  assert.match(trail, /local holding = "playing"/);
+  assert.doesNotMatch(trail, /task\.wait\(\) task\.wait\(\)/);
   // A trail is drawn slowly for as much of its life as one wait covers: 20 s at 0.04x is 0.8 s.
   assert.match(trail, /playTo\(target - 0\.8, 1\)/);
   assert.doesNotMatch(trail, /scale\(0\)/);
@@ -79,6 +84,36 @@ test("one call starts the effect, captures every moment in order and stops it", 
   assert.match(String(calls.at(-1)?.args.code), /pcall\(h\.stop, h\)/);
   assert.match(outcome.text, /Captured 2 of 2 moments, held still/);
   assert.match(outcome.text, /- 0\.05 s, at 0\.050 s: image 1\n- 0\.3 s, at 0\.300 s: image 2/);
+});
+
+test("a clock that runs on while held is caught: its late moments say so, and nothing claims it held", async () => {
+  // A playtest run's own clock: setTimeScale did nothing, and each capture took about 0.9 s.
+  const clock = { now: 0 };
+  const { studio } = fakeStudio({
+    reached: (time) => {
+      clock.now = Math.max(clock.now, time + 0.013);
+      return `${clock.now.toFixed(3)}|done|runs`;
+    },
+    capture: (n) => {
+      clock.now += 0.9;
+      return ok({}, { images: [image(n)], durationMs: 900 });
+    },
+  });
+  const outcome = await captureMoments({ code: "_G.vfx = cast()", times: [0.22, 0.6, 0.8], runtime: "client" }, {}, studio);
+  assert.equal(outcome.ok, true, outcome.text);
+  assert.match(outcome.text, /^Captured 3 of 3 moments, meant to be held still for each capture\./);
+  assert.doesNotMatch(outcome.text, /, held still/);
+  assert.match(outcome.text, /_G\.vfx's clock kept running while it was held: its setTimeScale\(0\) does not stop its time field\. The effect played on through each capture \(about 0\.9 s each\)/);
+  assert.match(outcome.text, /- 0\.22 s, at 0\.233 s: image 1\n- 0\.6 s, at 1\.133 s \(0\.53 s late\): image 2\n- 0\.8 s, at 2\.033 s \(1\.23 s late\): image 3/);
+  const moments = (outcome.data as { moments: Array<{ late?: number; held?: boolean }> }).moments;
+  assert.deepEqual(moments.map((moment) => [moment.late, moment.held]), [[undefined, false], [0.533, false], [1.233, false]]);
+});
+
+test("a clock that holds is said to have held, and a frame's overshoot of a few milliseconds is not late", async () => {
+  const outcome = await captureMoments({ code: "_G.vfx = start()", times: [0.45] }, {}, fakeStudio({ reached: () => "0.451|done|held" }).studio);
+  assert.match(outcome.text, /Captured 1 of 1 moments, held still for each capture\./);
+  assert.doesNotMatch(outcome.text, /late|kept running/);
+  assert.deepEqual((outcome.data as { moments: unknown[] }).moments, [{ requested: 0.45, reached: 0.451, image: 1 }]);
 });
 
 test("in a playtest the code runs on the client peer", async () => {
@@ -270,6 +305,12 @@ test("with a reference, each moment comes back beside the clip's frame at its ti
   assert.match(outcome.text, /- 0\.3 s, at 0\.300 s: pair 3, beside the clip at 0\.50 s\n/);
   assert.deepEqual((outcome.data as { comparedWith?: string }).comparedWith, CLIP);
 
+  // A late frame is paired with the clip where the effect really was, not where it was asked to be.
+  const lateClips = chatClips();
+  const late = await captureMoments({ code: "_G.vfx = start()", times: [0.1], reference: { clip: CLIP } }, {}, fakeStudio({ reached: () => "0.400|done|runs" }).studio, sheet, lateClips);
+  assert.deepEqual(lateClips.frames, [12], "the clip's frame at 0.4 s, its 13th");
+  assert.match(late.text, /- 0\.1 s, at 0\.400 s \(0\.30 s late\): pair 1, beside the clip at 0\.40 s/);
+
   // A time past the clip's end shows its last frame, and says so.
   const past = await captureMoments({ code: "_G.vfx = start()", times: [0.1], reference: { clip: CLIP, times: [2.5] } }, {}, fakeStudio().studio, sheet, chatClips());
   assert.match(past.text, /pair 1, beside the clip at 1\.00 s \(the clip ends at 1\.00 s; its last frame is shown\)/);
@@ -294,4 +335,191 @@ test("when the pairs cannot be made, the moments come back on their own, and say
   assert.deepEqual(outcome.images?.map((picture) => picture.data), ["plain"]);
   assert.match(outcome.text, /could not pair the frames with the clip's/);
   assert.equal((outcome.data as { comparedWith?: string }).comparedWith, undefined);
+});
+/** A Studio whose client takes its own screenshots: the probe answers `probe`, the live call `live`, and each capture reads back as an image. */
+function liveStudio(overrides: { probe?: McpToolOutcome; live?: (code: string) => McpToolOutcome; read?: (id: string) => McpToolOutcome } = {}) {
+  const calls: Call[] = [];
+  const studio: StudioCaller = async (tool, args, options) => {
+    calls.push({ tool, args, options });
+    if (tool === "capture_screenshot") {
+      const id = String(args.capture_id);
+      return overrides.read?.(id) ?? ok({}, { images: [{ data: `read-${id}`, mediaType: "image/jpeg" }] });
+    }
+    const code = String(args.code);
+    if (code.includes(`return string.format("ok|%s|%s|%d"`)) return overrides.probe ?? ok({ result: "ok|rbxtemp://0|loaded|12" });
+    if (code.includes("HttpService:JSONEncode")) {
+      return overrides.live?.(code) ?? ok({ result: JSON.stringify({ started: true, own: false, shots: [
+        { at: 0.217, done: 0.25, id: "rbxtemp://1" },
+        { at: 0.517, done: 0.55, id: "rbxtemp://2" },
+      ] }) });
+    }
+    throw new Error(`unexpected call: ${code.slice(0, 80)}`);
+  };
+  return { studio, calls };
+}
+
+test("live is checked with the other arguments: it holds nothing, and every moment fits one call", () => {
+  assert.deepEqual(parseCaptureMoments({ code: "cast()", times: [0.2, 0.5], runtime: "client", live: true }), {
+    code: "cast()", times: [0.2, 0.5], runtime: "client", target: "client-1", handle: "vfx", hold: true, slow: 0.1, sheet: true, live: true,
+  });
+  assert.match(String(parseCaptureMoments({ code: "cast()", times: [0.2], live: true, hold: false })), /leave hold and slow out/);
+  assert.match(String(parseCaptureMoments({ code: "cast()", times: [0.2], live: true, slow: 0.5 })), /leave hold and slow out/);
+  assert.match(String(parseCaptureMoments({ code: "cast()", times: [0.2, 16], live: true })), /at most 15 s/);
+  assert.match(String(parseCaptureMoments({ code: "cast()", times: [0.2], live: "yes" })), /live must be true or false/);
+  assert.equal((parseCaptureMoments({ code: "cast()", times: [0.2] }) as { live?: boolean }).live, undefined);
+});
+
+test("the live Luau runs the code before any of Roqer's names exist, then captures each moment from inside", () => {
+  const live = liveLuau("name = 'Fireball'\ncast()", "vfx", [0.2, 0.5]);
+  assert.ok(live.startsWith("local function start()\nname = 'Fireball'\ncast()\nend\n"), "the code cannot see or overwrite Roqer's locals");
+  assert.match(live, /local times = \{ 0\.2, 0\.5 \}/);
+  assert.match(live, /local before = _G\[name\]\nlocal started, startError = pcall\(start\)/);
+  // A handle the code stored is the clock; otherwise real seconds since the code returned.
+  assert.match(live, /local own = h ~= before and type\(h\) == "table" and tonumber\(h\.time\) ~= nil/);
+  assert.match(live, /if own then return tonumber\(h\.time\) or 0 end return os\.clock\(\) - origin/);
+  assert.match(live, /CaptureService:CaptureScreenshot\(function\(contentId\) id = contentId end\)/);
+  assert.match(live, /while id == nil and os\.clock\(\) - asked < 3 do task\.wait\(\) end/);
+  assert.match(live, /return HttpService:JSONEncode\(\{ started = true, own = own, shots = shots \}\)/);
+  assert.doesNotMatch(live, /setTimeScale|h\.stop/, "nothing is held or stopped");
+  // Before anything starts, the effect objects the client holds load their textures, for a bounded time.
+  const probe = liveProbeLuau();
+  assert.match(probe, /local kinds = \{ ParticleEmitter = true, Beam = true, Trail = true, Decal = true, Texture = true \}/);
+  assert.match(probe, /pcall\(gather, game:GetService\("ReplicatedStorage"\)\)/);
+  assert.match(probe, /pcall\(gather, player:FindFirstChild\("PlayerScripts"\)\)/);
+  assert.match(probe, /#found < 2000/);
+  assert.match(probe, /ContentProvider:PreloadAsync\(found\)/);
+  assert.match(probe, /while not loaded and os\.clock\(\) - waited < 10 do task\.wait\(\) end/);
+  assert.ok(probe.indexOf("PreloadAsync") < probe.indexOf("CaptureScreenshot"), "textures load before the screenshot that tests capturing");
+  assert.match(probe, /return string\.format\("ok\|%s\|%s\|%d", id, loaded and "loaded" or "loading", #found\)/);
+});
+
+test("a live capture starts the effect once, takes every moment inside the client, and reads the pictures back afterwards", async () => {
+  const { studio, calls } = liveStudio();
+  const outcome = await captureMoments({ code: "cast()", times: [0.2, 0.5], runtime: "client", target: "client-2", live: true }, {}, studio);
+  assert.equal(outcome.ok, true, outcome.text);
+  // The probe's capture is read back first, so a capture that cannot be had is found before the effect starts.
+  assert.deepEqual(calls.map((call) => call.tool), ["eval_client_runtime", "capture_screenshot", "eval_client_runtime", "capture_screenshot", "capture_screenshot"]);
+  assert.ok([calls[0], calls[2]].every((call) => call?.args.target === "client-2"), "the probe and the capture run on the client asked for");
+  assert.deepEqual(calls.filter((call) => call.tool === "capture_screenshot").map((call) => call.args), [{ capture_id: "rbxtemp://0" }, { capture_id: "rbxtemp://1" }, { capture_id: "rbxtemp://2" }]);
+  assert.deepEqual(outcome.images?.map((picture) => picture.data), ["read-rbxtemp://1", "read-rbxtemp://2"]);
+  assert.match(outcome.text, /^Captured 2 of 2 moments live: the effect played at its own speed, and the playtest client \(client-2\) took each frame itself as its time came \(its times are real seconds since the code returned\)\./);
+  assert.match(outcome.text, /- 0\.2 s, at 0\.217 s: image 1\n- 0\.5 s, at 0\.517 s: image 2/);
+  assert.match(outcome.text, /The effect was left to play out, as it would in the game\./);
+  assert.match(outcome.text, /Before the code ran, Roqer loaded the textures of the 12 particle, beam, trail and decal objects the client holds/);
+  assert.doesNotMatch(outcome.text, /held still|Roqer stopped the effect|came late/);
+  assert.equal((outcome.data as { live?: boolean }).live, true);
+});
+
+test("a client that cannot take its own screenshot is found before the effect starts", async () => {
+  for (const [probe, why] of [
+    [ok({ result: "timeout" }), /never finished within 3 s, so Studio's window is likely minimized or covered/],
+    [ok({ result: "error|CaptureScreenshot is not allowed here" }), /\(CaptureScreenshot is not allowed here\)/],
+  ] as const) {
+    const { studio, calls } = liveStudio({ probe });
+    const outcome = await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, studio);
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.text, why);
+    assert.match(outcome.text, /Nothing was started; capture with hold instead\./);
+    assert.equal(calls.length, 1, "only the probe ran");
+  }
+  // A capture the edit DM cannot read is found the same way, before the effect starts.
+  const { studio, calls } = liveStudio({ read: () => ({ ok: false, data: undefined, text: "", message: "Failed to load texture, unexpected format", httpStatus: 200, durationMs: 1 }) });
+  const unreadable = await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, studio);
+  assert.equal(unreadable.ok, false);
+  assert.match(unreadable.text, /live capture needs Studio to read back what the playtest client \(client-1\) captures, and it could not \(Failed to load texture, unexpected format\)\. Nothing was started/);
+  assert.deepEqual(calls.map((call) => call.tool), ["eval_client_runtime", "capture_screenshot"]);
+});
+
+test("a live capture says what failed: the code, a screenshot, a late moment, an ended effect, or a read-back", async () => {
+  const failedStart = await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, liveStudio({
+    live: () => ok({ result: JSON.stringify({ started: false, error: "Skill module not found" }) }),
+  }).studio);
+  assert.equal(failedStart.ok, false);
+  assert.match(failedStart.text, /The code that starts the effect failed, so nothing was captured: Skill module not found/);
+
+  const { studio, calls } = liveStudio({
+    live: () => ok({ result: JSON.stringify({ started: true, own: true, shots: [
+      { at: 0.133, done: 0.233, id: "rbxtemp://1" },
+      { at: 0.6, done: 0.6, id: "rbxtemp://2" },
+      { at: 0.6, done: 3.6 },
+    ] }) }),
+    read: (id) => (id === "rbxtemp://2" ? { ok: false, data: undefined, text: "", message: "Failed to load texture", httpStatus: 200, durationMs: 1 } : ok({}, { images: [image(Number(id.slice(-1)))] })),
+  });
+  const outcome = await captureMoments({ code: "_G.vfx = cast()", times: [0.05, 0.8, 0.9, 1.2], runtime: "client", live: true }, {}, studio);
+  assert.equal(outcome.ok, true, outcome.text);
+  assert.match(outcome.text, /\(its times are _G\.vfx's time field\)/);
+  assert.match(outcome.text, /- 0\.05 s, at 0\.133 s \(0\.08 s late\): image 1/);
+  assert.match(outcome.text, /- 0\.8 s, at 0\.600 s \(the clock stopped short of 0\.8 s: the effect had ended\): reading the capture back failed: Failed to load texture/);
+  assert.match(outcome.text, /- 0\.9 s, at 0\.600 s \(the clock stopped short of 0\.9 s: the effect had ended\): capture failed: the screenshot never finished within 3 s/);
+  assert.match(outcome.text, /- 1\.2 s: not captured: an earlier screenshot failed/);
+  assert.match(outcome.text, /Each screenshot took up to 0\.10 s to finish and the next waits for it, so 0\.05 s came late\. One play gives at most one frame per 0\.10 s: capture those times in another call to see them on time\./);
+  assert.equal(calls.filter((call) => call.tool === "capture_screenshot").length, 3, "the probe's and two moments'; a capture with no id is not read");
+});
+
+test("a live capture says when the textures were still loading, or when there was nothing to load first", async () => {
+  const loading = await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, liveStudio({ probe: ok({ result: "ok|rbxtemp://0|loading|40" }) }).studio);
+  assert.match(loading.text, /were still loading after 10 s, so frames may be missing layers; if they are, capture again/);
+  const none = await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, liveStudio({ probe: ok({ result: "ok|rbxtemp://0|loaded|0" }) }).studio);
+  assert.match(none.text, /found no particle, beam, trail or decal objects to load first/);
+  // The probe's own capture id is what is read back, whatever follows it.
+  const { studio, calls } = liveStudio({ probe: ok({ result: "ok|rbxtemp://7|loaded|3" }) });
+  await captureMoments({ code: "cast()", times: [0.2], runtime: "client", live: true }, {}, studio);
+  assert.deepEqual(calls[1]?.args, { capture_id: "rbxtemp://7" });
+});
+
+/** Frames of a bright scene in which a disc of `color` moves across, as Electron's BGRA bitmaps, keyed by the fake images' data. */
+function sceneFrames(color: readonly [number, number, number], count: number) {
+  const width = 48;
+  const height = 32;
+  const frames = new Map<string, { time: number; width: number; height: number; pixels: Uint8Array }>();
+  for (let index = 0; index < count; index++) {
+    const pixels = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const inside = index > 0 && index < count - 1 && Math.hypot(x - (8 + index * 7), y - 16) <= 6;
+        const [r, g, b] = inside ? color : [160, 166, 176];
+        pixels.set([b, g, r, 255], (y * width + x) * 4);
+      }
+    }
+    frames.set(`image-${index + 1}`, { time: 0, width, height, pixels });
+  }
+  return frames;
+}
+
+test("the frames get a colour check: a washed-out effect is told why it reads cheap, a deep one only gets its numbers", async () => {
+  const times = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+  const pale = sceneFrames([250, 205, 245], times.length);
+  const washed = await captureMoments({ code: "_G.vfx = start()", times }, {}, fakeStudio().studio, undefined, undefined, async (picture) => pale.get(picture.data));
+  assert.match(washed.text, /Colour check \(the 3 frames where the effect is largest, against the frames' own background\): of the effect's pixels, \d+% are pale \(white or pastel\)/);
+  assert.match(washed.text, /it is washed out, and that reads as cheap\./);
+  assert.ok(washed.text.indexOf("Colour check") > washed.text.indexOf("- 0.6 s"), "after the moments");
+  assert.ok(((washed.data as { tone?: { pale: number } }).tone?.pale ?? 0) > 0.9);
+
+  const violet = sceneFrames([70, 10, 120], times.length);
+  const deep = await captureMoments({ code: "_G.vfx = start()", times }, {}, fakeStudio().studio, undefined, undefined, async (picture) => violet.get(picture.data));
+  assert.match(deep.text, /Colour check/);
+  assert.doesNotMatch(deep.text, /washed out|Too much is pure white/);
+});
+
+test("frames in which nothing played say so, instead of passing without a colour check", async () => {
+  // A fireball run's live captures came back as the caster standing still; the effect never showed.
+  const times = [0.2, 0.6, 0.95, 1.3];
+  const empty = sceneFrames([160, 166, 176], times.length);
+  const outcome = await captureMoments({ code: "_G.vfx = start()", times }, {}, fakeStudio().studio, undefined, undefined, async (picture) => empty.get(picture.data));
+  assert.match(outcome.text, /Colour check: not measured\. Across these 4 frames nothing changes over even 0\.3% of the picture/);
+  assert.ok(outcome.text.indexOf("Colour check") > outcome.text.indexOf("- 1.3 s"), "after the moments");
+  assert.deepEqual((outcome.data as { tone?: unknown }).tone, { unmeasured: "nothing-showed" });
+});
+
+test("no colour check without a frame reader, with a frame that does not decode, or with too few frames", async () => {
+  const times = [0.1, 0.2, 0.3, 0.4];
+  const frames = sceneFrames([250, 205, 245], times.length);
+  const none = await captureMoments({ code: "_G.vfx = start()", times }, {}, fakeStudio().studio);
+  assert.doesNotMatch(none.text, /Colour check/);
+  const broken = await captureMoments({ code: "_G.vfx = start()", times }, {}, fakeStudio().studio, undefined, undefined,
+    async (picture) => (picture.data === "image-2" ? undefined : frames.get(picture.data)));
+  assert.doesNotMatch(broken.text, /Colour check/);
+  const two = await captureMoments({ code: "_G.vfx = start()", times: [0.1, 0.2] }, {}, fakeStudio().studio, undefined, undefined, async (picture) => frames.get(picture.data));
+  assert.doesNotMatch(two.text, /Colour check/);
+  assert.equal((two.data as { tone?: unknown }).tone, undefined);
 });

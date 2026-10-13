@@ -1273,6 +1273,548 @@ was "draw, make it lopsided, cut it hard", and light was named only as the
 thing not to draw ("rays and rings around a centre"). The guidance now says
 the helpers are shortcuts for drawn matter and shows light written directly.
 
+## Fifth study: explosions and smoke
+
+Done 2026-10-11. The user reported two problems with the effects runs build:
+- explosions that are "just a static image growing, not a flipbook";
+- smoke that is sometimes deep black and feels off or cartoonish.
+
+### Method
+
+- **Files:** the same collection: 47 files plus a preview rig from its nested
+  zip, 5,010 particle emitters.
+  - They were parsed with a new reader for the binary format.
+- **Textures:** 1,432 textures. 1,427 came back from the public thumbnail
+  service at 700 px, against 420 px before; 5 are blocked by moderation.
+  - Each was measured for value, inner contrast, saturation, edge softness
+    and per-cell coverage.
+  - Galleries of the smoke, fire-body and static fiery textures were looked
+    at.
+- **Videos:** the 6 explosion videos were stepped at 10-30 fps.
+  - Smoke darkness and the handover from fire to smoke were measured from
+    pixels against an empty frame of the same shot.
+- **Classification:** layers were picked out by name (smoke, fog, dust, …),
+  by colour (warm, saturated and bright for fire), by size, life and texture
+  edge. The effects behind the main numbers were read by hand.
+- **Not checked:** nothing in Studio.
+
+### Findings
+
+- **The mass is a flipbook.**
+  - Of 297 fiery layers big enough to be a body, 152 are flipbooks. Of the
+    145 single images, 138 are soft light (glows, flares, streaks, rings) and
+    2 are drawn shapes.
+  - The fire bodies are 4x4 drawn or 8x8 rendered sheets: 1-7 layers of 3-28
+    particles, bursting out at Speed about 88 against Drag about 3, at random
+    angles.
+  - Brightness is about 5 at LightEmission about 0.2. The colour cools in
+    its own hue: 73% end deeper red, 24% grey, 3% black.
+- **Timing (videos):**
+  - The fire body runs 0.05-0.33 s after the flash.
+  - The burn-out (a charcoal core with glowing cracks) runs 0.3-0.5 s and is
+    the darkest moment, near-black for 0.1-0.3 s.
+  - Smoke peaks at 0.33-0.6 s, covering half the fire's area or less.
+  - A stylized blast is gone by 0.6-1.2 s; realistic smoke lingers 2-3 s.
+- **Smoke fires in the same burst as the fire** and outlives it: by up to 1 s
+  in a hit, 2-11 s in a slam.
+- **Smoke (320 layers):**
+  - 68% self-lit (`LightInfluence` 0).
+  - Rendered value about 0.7, mid to light grey.
+  - At its most solid, a median Transparency of 0.59.
+  - 72% soft or mottled; cel puffs about half transparent.
+  - Median life 1.0 s.
+  - 40 dark layers are veils (median peak Transparency 0.5); one is dense,
+    in an ink-styled piece. In the videos, smoke darkens what is behind it by
+    0.05-0.2 in luminance.
+- **Value is Colour × Brightness.** The artists' dark hex values mostly sit
+  at high Brightness: `#3f3f3f` smoke at 5-16, `#2b190c` fire ends at 15-65.
+
+### Corrections
+
+- **"Fire gradients end in black":** 124 of the 139 black-ending fire
+  layers are in one effect's slash fire. Across 1,391 fiery layers, 87% stay
+  in hue. 82% of black ends are on sheets already broken into fragments.
+- **"Smoke reads better lit by the scene (`LightInfluence` 0.35-1)":** most
+  of the scene-lit smoke is one piece, at 30-40% opacity and LightEmission
+  0.55.
+- **The smoke example** (LightEmission 0, LightInfluence 1, colour 0.32
+  grey, Transparency from 0.2) made an 80%-opaque dark puff.
+- **The impact skeleton had no fire-body role,** and its colour example was a
+  static built-in puff scaled from 6 to 12.
+- **Smoke lifetime** is 0.5-1.5 s in a hit, not 1-3 s.
+- **Fire-body Brightness** is about 5. The 25-100 at LightEmission -1 to -5
+  comes from two pieces.
+- **Rocks fall** at -60 to -200, not -15 to -27. 20 layers get their
+  variety from a sheet of variants with `FlipbookStartRandom` and `Loop` at
+  0 fps.
+- **Custom flipbook layouts** are on 368 emitters (7%).
+
+### What changed
+
+- **`vfx-explosions.md` (new topic):**
+  - the mass as a flipbook;
+  - the anatomy and timing;
+  - the fire body with an example;
+  - fire to smoke and a burn-out example;
+  - smoke with a corrected example;
+  - drawn fire-burst and burn-out sheets;
+  - checks.
+
+  The two drawings were run with the repository's numpy helpers outside
+  Blender and checked tinted. They were not run in Blender, and none of the
+  examples were built in Studio.
+- **`vfx-craft.md`:**
+  - the skeleton gains a fire-body row and a corrected smoke row;
+  - the smoke example moved to the new topic;
+  - the built-in textures are named as single images;
+  - one check is added.
+- **`vfx-design.md`:** the corrections above.
+- **`vfx-textures.md`:**
+  - smoke style shares;
+  - variety sheets;
+  - the Custom layout note.
+- **Routes:** an explosion's route (the core pair, textures, explosions,
+  camera and world) arrives in two calls.
+  - The core pair's call is 47,499 of 48,000 characters, against 46,952
+    before.
+  - `vfx-craft.test.ts` holds the new route.
+- **To check in Studio:**
+  - how Brightness combines with `LightInfluence` above 0;
+  - that Custom layouts play;
+  - the new examples, built as one effect.
+
+### After the first fireball run
+
+The fireball brief on the new guidance gave the effect we were after:
+- a flash, a spiky burst, boiling fire, fragments and smoke;
+- gone by 2 s.
+
+The user called it better. The impact-star sheet still looked weird.
+
+**What the sheet did:**
+- **It grew, then held.** It was a round puff with about nine straight
+  spikes spread evenly, full size by cell 4. Cells 4-12 kept that one drawing,
+  the outline moving 3-9% a frame (median 9% over the sheet), before it broke
+  up.
+- **It read as a comic sticker.**
+- **The check stayed silent.** Roqer's sheet check flagged only
+  byte-identical cells, so it said nothing.
+- **Measured the same way, studied sheets move far more** (frames compared a
+  4 x 4 frame's time apart):
+  - 455 one-shot sheets: a median 44% a frame;
+  - impact stars 40%, fire 34%, smoke 30%.
+- **The 5% that hold** are nearly all rings, cracks and glows that only fade.
+- **The 18 studied impact-star sheets** mostly burst open: shards fly out and
+  the centre empties into a ring, or a four-point flare turns. Their last
+  drawn cell comes a median 73% of the way through.
+- **Likely contributors:**
+  - the flash is described as "a filled spiky shape… solid at the centre";
+  - the skeleton said only "a spiky 4 x 4 sheet";
+  - the new fire burst drew tongues from a blob's rim and reached full size a
+    third of the way in;
+  - the new burn-out's outline held for nine frames, moving 3%.
+
+**What changed:**
+- **`runtime/flipbook-sheet.ts`:**
+  - The check compares each frame's body (alpha 96 and above) with the next,
+    a 4 x 4 frame's time apart, over the cells where the drawing is at least
+    half its largest.
+  - When the median change is under 12% and half the steps are, it notes the
+    stretch with its numbers, as `heldStretch`.
+  - In the TypeScript check it fires on the agent's sheet. Its Python
+    calibration flags 5% of the studied sheets.
+  - Empty cells no longer count as repeats, so a burst's blank tail is not
+    "holding".
+- **`vfx-textures.md`:**
+  - every frame changes shape (with the numbers);
+  - how impact stars burst, and that the flash is a different layer;
+  - an impact-star example that opens into a ring of shards (78% a frame);
+  - the change check asks about a held middle;
+  - duplicated preview and upload advice was merged to make room.
+- **`vfx-explosions.md`:** the fire burst and burn-out keep moving (30% and
+  20% a frame).
+- **`vfx-craft.md`:** the impact-stars row says the sheet bursts open.
+- **Checks:**
+  - All three examples were run with the helpers in numpy outside Blender.
+  - The real check passes them.
+  - An explosion's route still arrives in two calls; its second call is
+    47,623 of 48,000 characters.
+
+### After the second fireball run
+
+The user called it "starting to look better":
+- the fire is a boiling mass that breaks up, not a scaled image;
+- the smoke is a grey, see-through cloud;
+- no sheet held a shape (its smoke sheet moved a median 25-28% a frame);
+- nothing was left behind.
+
+**What still looked off:**
+- **The last fire pieces read as paper cut-outs.** At 0.6 s they were large,
+  hard-edged and one flat red-orange, measured at about `#e25b27` in the
+  capture. That is close to what the FireBody example gives at the end of its
+  life: its last Colour at Brightness 5 on the fire-burst sheet's plain body
+  value comes to `#ff5424`. Rendered with the example's Colour at Brightness
+  5, the sheet showed the cause: once its hot heart shrank, every later frame
+  was one value, so one flat tone with a sharp edge. In the videos that
+  moment is a charred core whose edges glow.
+- **The playtest captures came late.** Asked for 0.6, 0.72, 0.8 and 1.3 s,
+  `capture_moments` returned frames at 1.23, 1.42, 1.93 and 2.37 s. Each
+  call's first moment was on time, then every later one was about a
+  capture's length late (about 0.9 s in a playtest). The run held a clock of
+  its own whose `setTimeScale(0)` did not stop it. The tool read the clock
+  before each screenshot, never checked that holding worked, and still said
+  each frame was "held still". So the in-game check never saw the fire at its
+  peak.
+
+**What changed:**
+- **`vfx-explosions.md`:**
+  - The fire-burst example's value now falls with time:
+    1. white-hot;
+    2. yellow, then orange;
+    3. a centre that chars to about 0.05;
+    4. edges that glow (0.35) in places and soften as it breaks up.
+  - At Brightness 5 only a value under about 0.1 reads dark, which the guide
+    now says.
+  - Its check asks for a charred centre with red edges rather than one flat
+    orange.
+- **`runtime/capture-moments.ts`:**
+  - After holding, the clock is read again two frames later. A clock that
+    moved is reported: the result names the handle and the time each capture
+    took, and says frames came out late.
+  - A moment reached more than 0.05 s past its time says how late it is.
+  - "Held still" is said only when the clock held.
+  - A late frame is paired with the reference clip where the effect really
+    was.
+- **`vfx-craft.md` and the operation's description:** a handle's
+  `setTimeScale(0)` must stop both its time and what it draws.
+- **Checks:**
+  - The example was run as printed with the helpers in numpy outside
+    Blender. It still moves a median 30% a frame, and the real sheet check
+    passes it.
+  - An explosion's route still arrives in two calls. Its second call is
+    47,956 of 48,000 characters, so the next addition to that route needs a
+    matching cut.
+- **Left for the next step:** effects a game plays by itself could still not
+  be held. Their moments were reported late rather than mislabelled.
+
+### Live capture
+
+An effect the game plays by itself (a cast, a hit) runs on the game's own
+clock, so holding it is not possible. The screenshot itself was never the
+problem: `CaptureService:CaptureScreenshot` grabs a frame at once. What took
+the second was reading the picture back and encoding it, between moments.
+
+**Built:**
+- **`capture_moments` with `live: true`:**
+  1. One probe asks the client to take a screenshot, and Roqer reads it
+     back. A client that cannot (an error, a window that is not rendering,
+     or a capture the edit DM cannot read) is reported before the effect
+     starts, so a cast is not spent for nothing.
+  2. One call then runs the code that triggers the effect and waits for each
+     time on the client.
+  3. At each time it takes the screenshot there and then, from inside the
+     game, and moves on.
+  4. Afterwards Roqer reads each capture back.
+- **Timing:**
+  - Times are real seconds after the code returns, or a new handle's `time`
+    when the code stores one. A handle whose clock stops has ended, and the
+    rest is captured where it stopped.
+  - Times reach 15 s, so every moment fits one bridge call.
+  - Nothing is held, preloaded or stopped: the effect plays out as in the
+    game.
+- **Truthful results:** a moment more than 0.05 s late says so, and a
+  screenshot slow to finish is named.
+- **`capture_screenshot` takes `capture_id`:** the `rbxtemp://` id such a
+  capture gave. It reads that capture in the edit DM, the second half of a
+  play-mode capture, instead of taking one. Only temporary capture ids are
+  accepted, with no `..`, so it cannot become a way to fetch other content
+  with the edit DM's privileges. It is a read, and the inspector edition
+  keeps it.
+- **A side effect on multi-client playtests:** a live capture on
+  `target: "client-2"` is client 2's view, because client 2 takes it. A held
+  capture still screenshots client 1, since `capture_screenshot` takes no
+  `target`.
+
+**Checked:**
+- The generated client Luau was run in Lua 5.1 against a simulated game with
+  a frame clock, a `CaptureService` whose callback fires a few frames later
+  (or never, or errors) and an emit-like handle:
+  - moments land within a frame of their times;
+  - a handle's clock is followed until its effect ends;
+  - a slow screenshot makes the next moment late, and it is said so;
+  - the probe catches both failures;
+  - code that assigns globals named like Roqer's locals cannot disturb them,
+    since it runs before they exist.
+- Unit tests cover the arguments, the call sequence, the reads by
+  `capture_id` and every failure the result names.
+
+**Not checked in Studio at the time:**
+- that a LocalScript may call `CaptureService:CaptureScreenshot`, which the
+  plugin had so far called only from its own client context;
+- that the edit DM reads those ids as it reads the plugin's;
+- how soon after the call the frame is taken.
+
+The probe turns the first two into a clear refusal before anything starts,
+not into wrong frames. The next run answered both (below).
+
+### After the third fireball run
+
+The same brief, with live capture available. The agent used it five times
+in a solo playtest.
+
+**What it showed:**
+- **Live capture works in Studio.** A LocalScript may call
+  `CaptureScreenshot`, and the edit DM reads its ids. Each call's first
+  moment came within a frame of its time: 0.15 → 0.165, 0.12 → 0.133,
+  0.45 → 0.465 and 0.26 → 0.266 s.
+- **A screenshot taken inside the game takes 0.33-0.38 s to finish.** The
+  loop waits for one before the next, so one play gives at most a frame
+  every third of a second. Asked for 0.15, 0.32, 0.45, 0.62, 0.75 and
+  0.95 s, it captured at 0.165, 0.499, 0.831, 1.183, 1.515 and 1.849 s, each
+  said to be late. Whether a second screenshot may be asked for before the
+  first finishes, and whether its frame would then be taken at once, is not
+  known.
+- **The first two live captures showed no effect at all.** No particle was
+  drawn, though the first cast did its damage and the second showed the
+  throw pose. The textures had been uploaded just before the playtest, and
+  live capture loaded nothing first. A held capture (whose preload waits for
+  its textures) then showed the explosion, and every live capture after it
+  did too. The agent put the first empty capture down to loading textures,
+  and did not remark on the second.
+- **A held capture in the playtest works** when the code plays the effect
+  through the emit module on the client: 0.25 → 0.252 and 0.6 → 0.601 s.
+
+**What changed:**
+- **The live probe now loads textures first.** It loads the particles,
+  beams, trails, decals and textures under `ReplicatedStorage`,
+  `ReplicatedFirst` and the local player's scripts and backpack, for at
+  most 10 s and 2,000 objects, before its test screenshot. The result says
+  how many loaded, or that they were still loading.
+- **Late moments get advice.** The result names the moments that came late
+  and says to capture them in another call.
+- **The guidance and the operation's description** say a frame takes about
+  0.35 s to finish, so live times are spaced that far apart.
+
+## Sixth study: why our effects read cheaper than artists'
+
+A magic-missile brief asked for "deep violet and magenta with sharp white
+highlights, not soft or bubbly". The user found the result cheap next to the
+artists' work, "crisp and high quality", without being able to say why.
+
+### Method
+
+- The run's frames were measured against the eight artist videos in the
+  dump, and against the fireball run's frames from the same bright test
+  place.
+- Every frame was scaled to 320 pixels wide. The effect is what differs from
+  the frames' per-pixel median by more than 0.12. Measurement used the
+  busiest third of the frames.
+- Each effect pixel was sorted as one of:
+  - pale: bright and nearly grey (max above 0.6, saturation under 0.35);
+  - vivid: bright and saturated (above 0.5, saturation 0.5 or more);
+  - deep: darker and saturated (0.5 or less, saturation 0.4 or more);
+  - blown out: every channel above 0.9.
+- The 5,010 studied emitters were then re-read for how brightness and
+  blending divide between soft glows, sharp shapes and white layers.
+
+### Findings
+
+| | Pale | Vivid or deep | Blown out |
+| --- | --- | --- | --- |
+| The magic-missile run | 74-85% | 3-6% | 15-24% |
+| Eight artist videos | 2-21% | 35-90% | 0-9% |
+| The fireball run, same place | 8-17% | 17-25% | 0% |
+
+- **The colour washed out.** Additive layers only lighten what is behind
+  them, so over a bright sky violet goes pastel, then white.
+  - The artist videos are shot in darker scenes (background value
+    0.04-0.44, against 0.63-0.68 here). The fireball in the same place is
+    the control: it stayed saturated.
+  - 58% of the studied saturated layers are solid (`LightEmission` 0.3 or
+    less, 11% of them negative). 35% are additive.
+- **Soft glows are dim; sharp shapes carry the brightness.**
+  - The 93 studied soft additive glows have a median Brightness of 1 and
+    are about two-thirds transparent at their most solid.
+  - The 508 crisp additive shapes have a median Brightness of 4 and are
+    opaque.
+  - White layers sit at Brightness 1 (median, 90% at 3 or less).
+  - The artist's own Magic Missiles makes its white core a separate solid
+    white layer (`LightEmission` 0, Brightness 1). Its soft glow is 86-96%
+    transparent, its shapes are 0.7-3.7 studs, and its textures cover 1-13%
+    of their canvas.
+- **Not the cause:**
+  - Fine detail: the run had as many small bright marks per frame as the
+    videos.
+  - The flash: the studied flashes reach a median of 15 studs at
+    Brightness 10, which the recipe matches.
+  - The places' bloom: mostly Threshold 2 and Intensity 1-2, as a new place
+    has.
+- **The textures read as clip art** (not measured): a perfect four-point
+  star, perfect rings, a pentagram, and Latin letters as runes. The artist's
+  set is a flash with bent arms, a shard tumbling across an 8x8 sheet, thin
+  streaks and dots. The guidance already warns about this.
+
+### What changed
+
+- **`runtime/effect-tone.ts`:** measures the shares from a capture's frames,
+  with the clip analysis's background and change threshold. `capture_moments`
+  reports them after every capture of three or more frames, with advice when
+  the effect is washed out (over 40% pale) or blown out (over 12%).
+  - The host decodes each frame at 320 pixels (`captureToneFrame`).
+  - Frames a moving camera changes everywhere are left out.
+  - Run on the real frames, it flags the magic run (both warnings) and
+    passes the fireball and the artist videos.
+- **`vfx-design.md`:**
+  - Colour in daylight is solid.
+  - Soft glows are about two-thirds transparent; the sharp shapes carry the
+    brightness.
+  - The study list is shorter, to keep the core pair inside one call
+    (47,780 of 48,000 characters).
+- **`vfx-craft.md`:**
+  - The bloom check no longer asks for every layer above the threshold: only
+    sharp shapes go above it, and soft glows stay dim.
+  - The capture step mentions the colour check, in fewer words.
+- **Left:** a texture check for clip-art symmetry. Sigils and rings are
+  rightly symmetric, so a plain symmetry test would flag them too.
+
+## Seventh study: why it still looked lower quality
+
+After the colour check the user still found the effects lower quality than
+the artists', beyond colour. This study compared what the agent makes with
+the studied files directly, property by property and pixel by pixel.
+
+### Method
+
+- The 1,427 dump textures were scaled to 256 pixels and measured from their
+  pixels; 230 originals were fetched at full size from the asset service.
+- A ring is a texture whose drawn pixels (alpha times value at least 0.15)
+  lie mostly in one band about the centre, around at least half of it. For
+  each of 72 angles round it: the brightest pixel and the band's width.
+- Line textures were thinned to their centre line, and the brightness along
+  it read.
+- The 5,010 studied emitters were re-read for per-particle variation
+  (`NumberSequence` envelopes) and the 48 files for meshes.
+- Each was compared with the magic-missile run's textures and Roqer's own
+  recipes.
+
+### Findings
+
+| | Studied artists | The run or the guidance |
+| --- | --- | --- |
+| Rings that vary round the circle | 84% of 159 | 0 of 2 |
+| Ring brightness spread, width spread | median 32%, 51% | 1-7%, 18-22% |
+| Share of a ring at full brightness | median 8% | 88-100% |
+| Share of a stroke near full brightness | median 13% of 752 (40% faint) | 48-82% (spikes, ring, sigil) |
+| Drawn pixels near full: soft, crisp, mixed | 1%, 19%, 29% of 1,393 | |
+| Flipbooks and single images at 1024 px | 93% of 89, 42% of 122 | single images capped at 512 |
+| Emitters with a Size envelope | 51% of 5,010, in 37 of 39 files | no recipe |
+| Files with glowing meshes | 20 of 48 (29 with any mesh) | not on the missile route |
+
+- **The guidance was wrong about rings.** It said soft shock rings are even,
+  and symbols have even line weight; both came from a community kit, not
+  the studied effects. The artists' rings are a bright, thick arc that thins
+  and fades round the rest, brush strokes with breaks, or radial streaks,
+  with the variation smooth rather than lumpy.
+- **Value inside a texture.** Soft light is a small hot core; a stroke is
+  bright at an accent and fades along the rest. The run's shapes were bright
+  along their whole length.
+- **Every particle of a layer was the same size.** Half the studied emitters
+  draw each particle's size from a range a median third of the peak.
+- **Resolution.** The size rule capped single textures at 512, under the
+  1024 most artists upload for what is large or crisp.
+- **Not the cause:**
+  - Symmetry and taper: 44% of the artists' crisp single textures are
+    strongly symmetric, so a symmetry measure does not tell theirs from ours.
+  - Detail: the run's textures carry as much small detail.
+  - Easing: the size and transparency curves ease alike; the median studied
+    size curve has 3 keys.
+
+### What changed
+
+- **`runtime/texture-ring.ts`:** finds a ring from a texture's pixels and
+  notes one that is even all round, with the studied numbers and what to
+  change. The Blender worker attaches the note to each drawn image it
+  reports.
+  - Run over the 1,427 dump textures it finds the same 159 rings as the
+    study's script and notes 16% of them.
+  - It notes the run's ring and rune band; the sigil is not a ring.
+- **`vfx-textures.md`:**
+  - Rings are round, not even, with the measured numbers and a ring example
+    (drawn with the real helpers: brightness spread 38%, width 55%).
+  - A brightness bullet with the family numbers, and a value question in the
+    review checklist; the symmetry question no longer exempts a ring's
+    value and width.
+  - Large or crisp textures at 1024, and the crisp examples drawn at 1024.
+  - The section that repeated "What textures look like", and the two upload
+    instructions, are merged, so the explosion route's second call shrank
+    (47,775 of 48,000 characters, from 47,956).
+- **`vfx-design.md`:** each particle its own size, with the `envelope`
+  format; the glowing-mesh share. Two bullets are shorter to keep the core
+  pair in one call (47,962).
+- **`vfx-craft.md`:** the streaks example carries an envelope, and the
+  recipe test checks that envelopes are numbers of 0 or more on
+  `NumberSequence` keys only.
+- **`SKILL.md`:** the mesh topic names the glowing-mesh share.
+- **Left:**
+  - No new run has been made to see whether the effects now look better.
+  - Strokes are not checked from their pixels, only rings; a flipbook's
+    cells are not checked for rings.
+
+## The second magic-missile and fireball runs
+
+The user found both "a bit better again". They are the first runs with the
+colour check and the seventh study's guidance.
+
+### What changed in the effects
+
+- **Colour.** The magic run's colour check started at 64% pale, as the
+  first run (74-85%) had been. The agent moved colour onto solid layers
+  until its playtest frames measured 21% pale, 26% vivid and 7% deep (the
+  studied range is 2-21% pale, 35-90% vivid or deep). A wide shot over open
+  sky still measured 43% pale, and the agent told the user so.
+- **Rings.** The shock ring is a bright arc that thins round the rest, as
+  the new example draws. The sigil is still a pentagram of even lines.
+- **The finale** dissolves its crescent dome into dark fragments, as the
+  studied burn-outs do.
+
+### What was still wrong
+
+- **The fireball's smoke read as a pale blue cloud.** Measured on the
+  playtest frame, the smoke over the sky was hue 201° at value 0.74, the sky
+  199° at 0.85: half-transparent grey takes the sky's colour. The studied
+  smoke's opacity (a median Transparency of 0.59 at its most solid) comes
+  from darker scenes. The agent saw it and made the smoke a smaller, darker,
+  warmer haze.
+- **A line from the explosion to the thrower.** The fireball flies at 120
+  studs a second and its ribbons copied the 0.6-0.85 s lifetimes measured
+  on curving missiles, so they were 72-100 studs long. At impact the script
+  only disabled them, so the whole straight path stayed drawn. Of 66
+  studied trails, 57 taper to nothing and 27 fade to transparent; 64 do one
+  or the other.
+- **Two live captures showed nothing.** Five and six frames of the caster
+  standing still, while the server recorded the hit. The colour check then
+  said nothing at all, so the result looked like any capture it had no
+  opinion on. The agent noticed and probed before capturing the fireball;
+  the cause was not found from the export.
+
+### What changed
+
+- **`runtime/effect-tone.ts`:** when no frame can be measured, the colour
+  check says why. Either nothing changes over 0.3% of the picture (not on
+  screen, too small, or the same in every frame), or the frames differ
+  almost everywhere, as a moving camera makes them. `capture_moments`
+  reports it after the moments, with `tone.unmeasured` in its data.
+- **`vfx-explosions.md`:** over a bright sky, smoke is more solid at its
+  peak (Transparency 0.2-0.35), so it shows its own grey.
+- **`vfx-motion.md`:** a trail is speed × lifetime long and still drawn at
+  impact; on a fast, straight shot keep it a few times the head's length,
+  fade its tail, or clear it at impact.
+- Two passages in `vfx-textures.md` and the explosions introduction are
+  shorter, to keep the explosion route's second call within 48,000
+  characters (47,890).
+- **Left:** the smoke opacity and trail length are starting points, not yet
+  seen in Studio.
+
 ## Deferred, and why
 
 - **Runtime EditableMesh/EditableImage effects** (UV scrolling on meshes,

@@ -126,7 +126,8 @@ To draw the effect's own textures, which most effects should, load
 
 **Built-in textures, no upload.** These ship with Roblox for the legacy Fire,
 Smoke, Sparkles and Explosion effects. They are fine as stand-ins while
-blocking an effect out, and every Roblox player has seen them.
+blocking an effect out, and every Roblox player has seen them. Each is one
+image, so none can be an explosion's fire or smoke.
 
 | Texture | Looks like |
 | --- | --- |
@@ -157,8 +158,8 @@ then `preview_asset`) is worth a look when a texture there matches the style.
 - **Following a moving source:** `LockedToPart = true` makes particles follow
   the emitter (an aura, a held torch, a spinning model). Leave it off for
   anything thrown off.
-- **Lighting:** `LightInfluence = 0` keeps a glowing layer at its own colour.
-  Smoke reads better lit by the scene (`LightInfluence` 0.35-1).
+- **Lighting:** `LightInfluence = 0` keeps a layer at its own colour. Most
+  studied smoke is self-lit too; scene-lit smoke goes dark in shade.
 
 ## 4. Layer skeletons
 
@@ -168,17 +169,19 @@ effect's idea needs. They are a floor, not a target: a finished effect should
 look made for its game. R is the effect's radius in studs.
 
 **Impact** (a hit, an explosion; every layer fires by `EmitCount` and
-`EmitDelay`; times are from the hit):
+`EmitDelay`; times are from the hit; for fire and smoke load
+`vfx-explosions.md`):
 
 | Time | Role | Make |
 | --- | --- | --- |
 | -0.15 s | Anticipation | A glow that shrinks from 1.5R to 0 over 0.1-0.15 s, spinning fast |
 | 0 | Flash | A soft ball or four-point flare, 0 to 2.5R, Lifetime 0.06-0.1, Brightness 10, `ZOffset` in front |
-| +0.03 s | Impact stars | A spiky 4 x 4 sheet, Lifetime 0.075-0.15, EmitCount 2-6, as a colour layer (`ZOffset` z), its black twin (the same size, life and count, z to z + 0.25) and a white copy (z + 1) |
+| +0.03 s | Impact stars | A 4 x 4 sheet that bursts open (`vfx-textures.md`), Lifetime 0.075-0.15, EmitCount 2-6, as a colour layer (`ZOffset` z), its black twin (the same size, life and count, z to z + 0.25) and a white copy (z + 1) |
 | +0.03 s | Black backing | A soft black blob behind, 2-4R |
 | +0.05 s | Streaks | `VelocityParallel` with `Squash`, Speed 60-200, Drag 8-12, with a few black twins |
 | +0.05 s | Ring | A flat `VelocityPerpendicular` ring (Speed 0.001) growing to 2-3R over 0.2-0.4 s |
-| +0.05 s | Smoke | Constant-size puffs (4 x 4 OneShot), cel for a toon look or mottled for a heavy one (`vfx-textures.md`), Speed 50-120, Drag 8, Lifetime 1-1.5, Transparency to above 1, `TimeScale` 0.7, a warm and a grey layer; beside fire, carrying the fire's colour where it is lit |
+| +0.03 s | Fire body | For fire: 2-4 fire-burst flipbook layers, never one image scaling, 3-25 particles each, Speed 60-400, Drag 3-6, Lifetime 0.45-1, Brightness about 5, cooling from yellow-white to red, then a burn-out |
+| +0.05 s | Smoke | The same burst, living 1.5-3 times as long: self-lit mid-grey sheets (or tinted by the fire), half transparent at their most solid, `TimeScale` 0.7, gone by about 1.5 s for a hit |
 | +0.05 s | Embers | Dots at `LightEmission` 1, Speed 10-120, Drag 10, Lifetime 0.75-2 |
 | 0 | Light | A PointLight at Brightness 7-16, Range 7-15, fading over 0.5 s |
 
@@ -189,7 +192,7 @@ look made for its game. R is the effect's radius in studs.
   - Growing to 25-35 studs by 60% of life, Transparency from 0.45-0.85 to
     above 1.
   - `LightEmission` 1, `RotSpeed` ±15-20, `ZOffset` 0.5, over the smoke.
-- **Smoke:** puffs in warm and grey pairs, lit by the scene.
+- **Smoke:** self-lit puffs in warm and grey pairs.
 - **A ground skirt:** a flat copy of the smoke, squashed.
 - **Black grit:** a few dark dust particles.
 
@@ -233,9 +236,10 @@ Flash, in front of everything, for a frame or two:
 }
 ```
 
-The impact's three-value stack: colour; its black twin just in front, the
-same emitter with only the colour and blending changed; and a small white
-core in front of both:
+The impact stars' three-value stack: colour; its black twin just in front,
+the same emitter with only the colour and blending changed; and a small white
+core in front of both. The stand-in is one image; in the effect it is the
+spiky sheet:
 
 ```json
 [
@@ -297,7 +301,7 @@ Streaks that shoot out and stop:
     "SpreadAngle": [180, 180], "Drag": 10, "Orientation": "VelocityParallel",
     "LightEmission": 0, "LightInfluence": 0, "Brightness": 8, "ZOffset": 2,
     "Color": [{ "time": 0, "value": [1, 0.9, 0.6] }, { "time": 1, "value": [1, 0.3, 0.05] }],
-    "Size": [{ "time": 0, "value": 1.2 }, { "time": 1, "value": 0 }],
+    "Size": [{ "time": 0, "value": 1.2, "envelope": 0.5 }, { "time": 1, "value": 0 }],
     "Squash": [{ "time": 0, "value": 3 }, { "time": 1, "value": 1 }],
     "Transparency": 0
   },
@@ -324,25 +328,7 @@ Attachment with the ground:
 }
 ```
 
-Smoke that bursts out, hangs, runs slower than the core and is lit by the
-scene:
-
-```json
-{
-  "op": "create", "className": "ParticleEmitter", "name": "Smoke",
-  "properties": {
-    "Texture": "rbxasset://textures/particles/smoke_main.dds",
-    "Rate": 0, "Enabled": false, "Lifetime": [1, 1.5], "Speed": [50, 90],
-    "SpreadAngle": [180, 180], "Drag": 8, "Acceleration": [0, 3, 0], "TimeScale": 0.7,
-    "Rotation": [0, 360], "RotSpeed": [-30, 30],
-    "LightEmission": 0, "LightInfluence": 1, "Brightness": 1,
-    "Color": [0.32, 0.28, 0.26],
-    "Size": 6,
-    "Transparency": [{ "time": 0, "value": 0.2 }, { "time": 1, "value": 1.6 }]
-  },
-  "attributes": { "EmitCount": 5, "EmitDelay": 0.2 }
-}
-```
+The fire body, burn-out and smoke examples are in `vfx-explosions.md`.
 
 Light flash:
 
@@ -415,19 +401,15 @@ capture instead of caught in passing.
      "code": "_G.vfx = require(game.ReplicatedStorage.VFX.Emit).play(game.ReplicatedStorage.VFX.Slam, CFrame.new(0, 3, 0))",
      "times": [0.03, 0.1, 0.25, 0.45, 0.9] } }
    ```
-   Roqer aims the camera, starts the effect and holds it while its textures
-   load (a texture shown for the first time, such as one just uploaded,
-   takes a moment), then plays it at normal speed, slows down for the last
-   stretch before each time, holds it there, captures the viewport, and
-   returns the frames tiled into one image, two to a row at half width, then
-   stops the effect. The result says when textures were still loading; only
-   then capture again.
+   Roqer aims the camera, waits for the textures, holds the effect at each
+   time and captures it, returns the frames tiled two to a row at half width,
+   stops the effect and checks the frames' colour. Capture again only when
+   the result says textures were still loading.
    A sheet of up to eight frames costs about what two full frames do. Pick
    the 4-6 moments that matter: anticipation, the flash, the peak, the body
    at about 0.3 s, the smoke, and a time just past the effect's end, to see
-   that nothing is left behind. Every call re-reads the whole
-   conversation, so one call for all the moments is far cheaper than a call
-   for each.
+   that nothing is left behind. One call for all the moments is far cheaper
+   than a call for each: every call re-reads the conversation.
    - **Detail and the final look:** a frame on a sheet is half as wide as a
      full frame. When small detail matters (a texture's edges, a thin trail,
      the missiles in flight), and for the final look from the player's camera
@@ -440,8 +422,13 @@ capture instead of caught in passing.
      trails come out 25 times too short.
    - **On a character in a playtest:** pass `"runtime": "client"`; the code
      runs in the client, and the frames are the player's view.
-   - **Your own module's handle** works too, if it has a `time` field in effect
-     seconds and `setTimeScale(scale)`.
+   - **What the game plays by itself** (a cast, a hit) cannot be held. Pass
+     `"live": true` with code that triggers it as a player would: the client
+     takes each frame itself as its time comes, timed from when the code
+     returns. A frame takes about 0.35 s to finish, so space times that far
+     apart and take closer beats in another call.
+   - **Your own module's handle** can be held if it has a `time` field and a
+     `setTimeScale(0)` that stops both `time` and what it draws.
 4. Make a second `capture_moments` call with the other view (step 2) and the
    same times: two calls for both views, never a call per moment.
 5. Ask of each capture:
@@ -449,8 +436,9 @@ capture instead of caught in passing.
      (vfx-design.md section 1)? Does it grow taller for a moment, or stay a
      flat splash on the floor? At 0.3 s, is a body (crescents, tongues,
      puffs) still carrying the mass, or only shards and sparks?
-   - Is every layer meant to glow above the place's bloom threshold? A
-     Brightness of 1-3 reads as flat paint at Threshold 2.
+   - Do the sharp shapes glow above the bloom threshold while soft glows
+     stay dim? A soft glow above it is a white haze; a shape at Brightness 1-3
+     is flat paint at Threshold 2. Is the colour check washed out?
    - Does the flash frame read as one sharp, overexposed shape, bigger than
      what follows it, and is it gone by 0.15 s, so the frames after it show
      the body? A 30-stud flash that held for 0.2 s without fading whited out
@@ -473,6 +461,9 @@ capture instead of caught in passing.
      edge is a thin line across the view.
    - Does a light tint the whole floor?
    - Does the smoke beside the fire take its colour, or is it one flat tone?
+   - For fire: is the body a boiling mass of sheets, or one image scaling
+     up? Is the darkest smoke a brief burn-out, or a dark puff that lingers?
+     (`vfx-explosions.md` section 7.)
    - Does every layer show? Thin sparks and faint smoke vanish at a normal
      camera distance.
    - Does one layer bury another?

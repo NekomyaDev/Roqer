@@ -107,12 +107,16 @@ export async function openSkillLibrary(root: string): Promise<SkillLibrary> {
       if (!stat.isFile() || stat.size > MAX_DOCUMENT_BYTES) {
         throw new Error(`Skill resource must be a supported file no larger than ${MAX_DOCUMENT_BYTES} bytes.`);
       }
+      const content = await fs.readFile(resolved, "utf8").catch(() => {
+        throw new Error(`Skill resource could not be read: ${name}/${resource}`);
+      });
       return Object.freeze({
         name,
         resource: resource.split("\\").join("/"),
-        content: await fs.readFile(resolved, "utf8").catch(() => {
-          throw new Error(`Skill resource could not be read: ${name}/${resource}`);
-        }),
+        // A Windows checkout writes CRLF; the carriage returns carry nothing,
+        // yet they counted against each call's character cap and split the VFX
+        // core pair (891 of them) across two calls there but not on Linux.
+        content: content.replace(/\r\n/g, "\n"),
       });
     },
   });
