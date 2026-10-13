@@ -22,6 +22,47 @@ afterEach(() => { jest.restoreAllMocks(); fs.rmSync(dir, { recursive: true, forc
 const leftovers = () => fs.readdirSync(dir).filter((name) => name.includes('.roqer-'));
 
 describe('compareAndWrite', () => {
+  test('the admission callback runs under the lease without replacing the approved identity', async () => {
+    const file = path.join(dir, 'Main.server.luau');
+    fs.writeFileSync(file, 'old\n');
+    const approved = captureSourceFileIdentity(fs.realpathSync.native(file));
+    const beforeCommit = jest.fn(() => {
+      expect(fs.existsSync(sourceWriteLockPath(approved.file.path))).toBe(true);
+      expect(fs.readFileSync(file, 'utf8')).toBe('old\n');
+    });
+    await expect(compareAndWrite(file, sourceRevision('old\n'), 'new\n', approved, beforeCommit)).resolves.toMatchObject({ ok: true });
+    expect(beforeCommit).toHaveBeenCalledTimes(1);
+    expect(fs.readFileSync(file, 'utf8')).toBe('new\n');
+    expect(fs.existsSync(sourceWriteLockPath(approved.file.path))).toBe(false);
+  });
+
+  test('a refused admission callback preserves bytes and releases the write lease', async () => {
+    const file = path.join(dir, 'Main.server.luau');
+    fs.writeFileSync(file, 'old\n');
+    const approved = captureSourceFileIdentity(fs.realpathSync.native(file));
+    await expect(compareAndWrite(file, sourceRevision('old\n'), 'new\n', approved, () => {
+      throw new Error('the Studio owner changed before commit');
+    })).rejects.toThrow('Studio owner changed');
+    expect(fs.readFileSync(file, 'utf8')).toBe('old\n');
+    expect(leftovers()).toEqual([]);
+    expect(fs.existsSync(sourceWriteLockPath(approved.file.path))).toBe(false);
+    await expect(compareAndWrite(file, sourceRevision('old\n'), 'retry\n', approved)).resolves.toMatchObject({ ok: true });
+  });
+
+  test('identity is rechecked after admission immediately before the synchronous rename', async () => {
+    const file = path.join(dir, 'Main.server.luau');
+    fs.writeFileSync(file, 'old\n');
+    const approved = captureSourceFileIdentity(fs.realpathSync.native(file));
+    await expect(compareAndWrite(file, sourceRevision('old\n'), 'new\n', approved, () => {
+      const replacement = path.join(dir, 'external.luau');
+      fs.writeFileSync(replacement, 'old\r\n');
+      fs.renameSync(replacement, file);
+    })).rejects.toThrow('path changed');
+    expect(fs.readFileSync(file, 'utf8')).toBe('old\r\n');
+    expect(leftovers()).toEqual([]);
+    expect(fs.existsSync(sourceWriteLockPath(approved.file.path))).toBe(false);
+  });
+
   test('refuses an atomic replacement with identical normalized text', async () => {
     const file = path.join(dir, 'Main.server.luau');
     fs.writeFileSync(file, 'old\n');

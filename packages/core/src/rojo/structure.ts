@@ -520,7 +520,7 @@ async function releaseAll(leases: Array<Awaited<ReturnType<typeof acquireSourceW
  * whole change and rejects with ProjectFilesError, naming whatever could not
  * be put back. Resolves with a warning when a lock could not be released yet.
  */
-export async function applyStructure(context: StructureContext, change: ProjectChange, backup: string): Promise<{ lockReleaseWarning?: string }> {
+export async function applyStructure(context: StructureContext, change: ProjectChange, backup: string, beforeApply?: () => void): Promise<{ lockReleaseWarning?: string }> {
   const leases: Array<Awaited<ReturnType<typeof acquireSourceWriteLock>>> = [];
   const untouched = (failure: unknown, code: string) => Object.assign(new ProjectFilesError(failure, [], code), { applied: false });
   try {
@@ -541,7 +541,10 @@ export async function applyStructure(context: StructureContext, change: ProjectC
   }
   let failure: unknown;
   try {
-    const done = await applyFileOps(change.ops, context.root, backup);
+    // Lock acquisition and guarded source reads await. Revalidate the caller
+    // before starting the file transaction, not only before entering this helper.
+    beforeApply?.();
+    const done = await applyFileOps(change.ops, context.root, backup, beforeApply);
     let mismatch: string | undefined;
     try {
       const tree = await context.sourcemap();

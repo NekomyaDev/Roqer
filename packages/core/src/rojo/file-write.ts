@@ -36,7 +36,7 @@ function releaseWarning(saved: boolean, error: unknown, lockPath: string): strin
  * after a successful rename is reported on the successful outcome, never as
  * an unapplied edit.
  */
-export async function compareAndWrite(file: string, expectedRevision: string, content: string, approvedIdentity?: SourceFileIdentity): Promise<WriteOutcome> {
+export async function compareAndWrite(file: string, expectedRevision: string, content: string, approvedIdentity?: SourceFileIdentity, beforeCommit?: () => void): Promise<WriteOutcome> {
   const identity = approvedIdentity ?? captureSourceFileIdentity(await fs.realpath(file));
   const realFile = identity.file.path;
   const lease = await acquireSourceWriteLock(realFile);
@@ -51,6 +51,7 @@ export async function compareAndWrite(file: string, expectedRevision: string, co
     }, (temporary) => {
       // An asynchronous rename can remain queued after a lease is lost.
       // Keep the final checks and rename in one synchronous commit path.
+      beforeCommit?.();
       assertSourceFileIdentitySync(identity, file);
       lease.assertHeldSync();
       renameSync(temporary, realFile);

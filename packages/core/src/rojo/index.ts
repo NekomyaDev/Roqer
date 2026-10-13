@@ -4,6 +4,7 @@ import { checkFile, gitIgnored, locateScript, scriptFiles, type Ownership, type 
 import type { PlannedTop } from './new-files.js';
 import { probeRojoServer } from './rojo-server.js';
 import { RojoError, execRojo, loadSourcemap, rojoVersion, type RojoRunner, type SourcemapNode } from './sourcemap.js';
+import type { StudioOwner } from './identity-history.js';
 import {
   applyStructure, backupFolder, planStructure,
   type Disposition, type PlannedLive, type ProjectChange, type StructureContext,
@@ -26,6 +27,8 @@ export interface ProjectLink {
   projectName: string;
   rojoVersion: string;
   port: number;
+  /** Never returned in public link summaries; retained by ledger callbacks. */
+  studioOwner?: StudioOwner;
 }
 
 export interface LinkSummary {
@@ -67,6 +70,25 @@ export class RojoIntegration {
     return this.links.size > 0;
   }
 
+  getLinks(): ProjectLink[] {
+    return [...this.links.values()].map((link) => ({ ...link, instanceId: link.studioOwner?.instanceId ?? link.instanceId }));
+  }
+
+  /** Accepted physical registrations update anchors even after a scope is unlinked. */
+  followStudioIdentity(owner: StudioOwner): void {
+    for (const [key, link] of [...this.links]) if (link.studioOwner?.physicalSessionId === owner.physicalSessionId) {
+      link.studioOwner.instanceId = owner.instanceId;
+      link.instanceId = owner.instanceId;
+      if (key !== owner.instanceId && !this.links.has(owner.instanceId)) {
+        this.links.delete(key); this.links.set(owner.instanceId, link);
+      }
+    }
+  }
+
+  ownedKeys(owner: StudioOwner): string[] {
+    return [...this.links].filter(([, link]) => link.studioOwner?.physicalSessionId === owner.physicalSessionId).map(([key]) => key);
+  }
+
   linkFor(instanceId: string | undefined): ProjectLink | undefined {
     return instanceId === undefined ? undefined : this.links.get(instanceId);
   }
@@ -77,7 +99,7 @@ export class RojoIntegration {
     return this.links.delete(instanceId);
   }
 
-  async link(instanceId: string, projectPath: string): Promise<LinkSummary> {
+  async link(instanceId: string, projectPath: string, equivalentIds: readonly string[] = [], studioOwner?: StudioOwner, assertOwner?: () => void): Promise<LinkSummary> {
     if (!/\.project\.json$/i.test(projectPath)) {
       throw new RojoError('rojo_link_invalid', 'project must be a Rojo *.project.json file, such as default.project.json');
     }
@@ -89,7 +111,7 @@ export class RojoIntegration {
       throw new RojoError('rojo_link_invalid', `No project file at ${projectPath}`);
     }
     for (const other of this.links.values()) {
-      if (other.projectFile === projectFile && other.instanceId !== instanceId) {
+      if (other.projectFile === projectFile && other.instanceId !== instanceId && !equivalentIds.includes(other.instanceId)) {
         throw new RojoError('rojo_link_invalid', `${path.basename(projectFile)} is already linked to ${other.instanceId}; unlink it there first`);
       }
     }
@@ -112,10 +134,8 @@ export class RojoIntegration {
       projectName: typeof config.name === 'string' ? config.name : path.basename(root),
       rojoVersion: version,
       port: typeof config.servePort === 'number' ? config.servePort : DEFAULT_SERVE_PORT,
+      ...(studioOwner ? { studioOwner: { ...studioOwner } } : {}),
     };
-    this.links.set(instanceId, link);
-    this.cache.set(projectFile, { at: this.now(), tree });
-
     const files = scriptFiles(tree);
     const ignored = await this.ignored(root, files.map((file) => path.resolve(root, file)));
     const scripts: Record<Persistence, number> = { file: 0, studio_only: 0, generated: 0, unsupported: 0 };
@@ -125,7 +145,7 @@ export class RojoIntegration {
       scripts[owner.persistence] += 1;
       if (owner.persistence === 'unsupported' && problems.length < MAX_PROBLEMS && owner.reason) problems.push(owner.reason);
     }
-    return {
+    const summary = {
       project: path.basename(projectFile),
       root,
       rojoVersion: version,
@@ -133,6 +153,16 @@ export class RojoIntegration {
       problems,
       rojoServer: { port: link.port, ...(await this.probe(link)) },
     };
+    // Validate before replacing alias bindings: a failed rebind preserves the old project.
+    assertOwner?.();
+    const occupied = this.links.get(instanceId);
+    if (occupied?.studioOwner && occupied.studioOwner.instanceId !== instanceId && !equivalentIds.includes(instanceId)) {
+      throw new RojoError('rojo_link_invalid', 'A previous Studio owner still holds this binding key. Explicitly unlink its current place before relinking; no binding was replaced.');
+    }
+    for (const id of equivalentIds) if (id !== instanceId) this.unlink(id);
+    this.links.set(instanceId, link);
+    this.cache.set(projectFile, { at: this.now(), tree });
+    return summary;
   }
 
   async probe(link: ProjectLink): Promise<{ reachable: boolean; matches?: boolean }> {
@@ -189,13 +219,13 @@ export class RojoIntegration {
    * back as planned; rejects with ProjectFilesError, having undone it, when
    * not. Resolves with the folder holding copies of what it removed, if any.
    */
-  async applyStructure(link: ProjectLink, change: ProjectChange): Promise<{ backup?: string; lockReleaseWarning?: string }> {
+  async applyStructure(link: ProjectLink, change: ProjectChange, beforeApply?: () => void): Promise<{ backup?: string; lockReleaseWarning?: string }> {
     const backup = backupFolder(link.projectName, this.now());
     // Script ownership is read from a cached sourcemap; it no longer matches the files.
     this.cache.delete(link.projectFile);
     let applied: { lockReleaseWarning?: string };
     try {
-      applied = await applyStructure(this.context(link), change, backup);
+      applied = await applyStructure(this.context(link), change, backup, beforeApply);
     } finally {
       this.cache.delete(link.projectFile);
     }

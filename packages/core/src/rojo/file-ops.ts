@@ -51,10 +51,11 @@ async function exists(file: string): Promise<boolean> {
  * the promise rejects with ProjectFilesError. Resolves with a journal for
  * undoFileOps, used when a later check refuses what was written.
  */
-export async function applyFileOps(ops: FileOp[], root: string, backupRoot: string): Promise<Done[]> {
+export async function applyFileOps(ops: FileOp[], root: string, backupRoot: string, beforeOperation?: () => void): Promise<Done[]> {
   const done: Done[] = [];
   try {
     for (const op of ops) {
+      beforeOperation?.();
       if (op.kind === 'mkdir') {
         await fsp.mkdir(op.path);
         done.push({ kind: 'created', path: op.path });
@@ -68,11 +69,14 @@ export async function applyFileOps(ops: FileOp[], root: string, backupRoot: stri
         try {
           // One move out of the project: rojo serve 7.7 on Windows crashes when a
           // recursive delete takes a folder's children before the folder itself.
+          beforeOperation?.();
           await fsp.rename(op.path, backup);
         } catch (error) {
           // A backup on another drive cannot be renamed into; copy and delete instead.
           if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+          beforeOperation?.();
           await fsp.cp(op.path, backup, { recursive: true, errorOnExist: true, force: false });
+          beforeOperation?.();
           await fsp.rm(op.path, { recursive: true });
         }
         done.push({ kind: 'deleted', path: op.path, backup });
@@ -80,6 +84,7 @@ export async function applyFileOps(ops: FileOp[], root: string, backupRoot: stri
         if (await exists(op.to) && op.from.toLowerCase() !== op.to.toLowerCase()) {
           throw new Error(`${path.basename(op.to)} already exists`);
         }
+        beforeOperation?.();
         await fsp.rename(op.from, op.to);
         done.push({ kind: 'renamed', from: op.from, to: op.to });
       }
