@@ -3,12 +3,13 @@ import type { Project } from "./model";
 /**
  * The Roqer community server's invite.
  *
- * Empty hides the invite everywhere, so the feature ships switched off rather
- * than pointing at a link that does not work. Only an `https` Discord invite is
- * accepted, and the renderer opens it as an ordinary link, which the main
- * process hands to the system browser and never loads in the app window.
+ * A permanent invite: one that expires would leave every installed copy
+ * pointing at a dead link. Emptying it hides the invite everywhere. Only an
+ * `https` Discord invite is accepted, and the renderer opens it as an ordinary
+ * link, which the main process hands to the system browser and never loads in
+ * the app window.
  */
-export const COMMUNITY_INVITE_URL = "";
+export const COMMUNITY_INVITE_URL = "https://discord.gg/vqzKJK4STR";
 
 /** What the sidebar footer shows for the community server. */
 export type CommunityInvite = "card" | "icon" | "none";

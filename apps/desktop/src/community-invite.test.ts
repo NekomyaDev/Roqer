@@ -28,6 +28,6 @@ test("no invite, or one that is not a Discord invite, shows nothing at all", () 
   assert.equal(isCommunityInviteUrl("https://discord.com/invite/AbC-123"), true);
 });
 
-test("the shipped invite is either unset or a real Discord invite", () => {
-  assert.ok(COMMUNITY_INVITE_URL === "" || isCommunityInviteUrl(COMMUNITY_INVITE_URL));
+test("the shipped invite is a Discord invite the sidebar will show", () => {
+  assert.equal(isCommunityInviteUrl(COMMUNITY_INVITE_URL), true);
 });
