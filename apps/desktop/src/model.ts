@@ -110,6 +110,8 @@ export type Preferences = {
    * announces the tool and never the work.
    */
   discordPresence: boolean;
+  /** Whether the community invite card was dismissed, leaving only its icon. */
+  communityInviteDismissed: boolean;
   /** Which managed sign-in drives runs. */
   provider: ProviderId;
   /** Remembered per provider so switching back keeps the previous choice. */
@@ -211,6 +213,7 @@ export function createInitialWorkspace(theme: Theme = "dark"): WorkspaceState {
       mcpEndpoint: DEFAULT_MCP_ENDPOINT,
       studioInstanceId: null,
       discordPresence: true,
+      communityInviteDismissed: false,
       provider: DEFAULT_PROVIDER_ID,
       chatGptModelId: null,
       claudeModelId: null,
@@ -365,6 +368,9 @@ export function normalizeWorkspace(value: unknown, themeFallback: Theme = "dark"
     // same answer a new install gets. Anyone who turned it off has the boolean
     // saved, so the default never overrides a decision that was actually made.
     discordPresence: typeof rawPreferences.discordPresence === "boolean" ? rawPreferences.discordPresence : true,
+    // Additive: a workspace saved before the invite existed has not seen it,
+    // so it is offered once to people who were already using Roqer too.
+    communityInviteDismissed: rawPreferences.communityInviteDismissed === true,
     // A workspace saved while a vendor adapter was selectable still loads; it
     // simply comes back on the default rather than refusing to open or
     // resurrecting a provider that can no longer run.
