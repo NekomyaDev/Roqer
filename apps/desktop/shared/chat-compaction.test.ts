@@ -74,9 +74,22 @@ test("the dropped notice is never stacked up or treated as a line of the chat", 
   const once = compactChatSummary("", big);
   const twice = compactChatSummary(once, [{ role: "user", text: "one more" }]);
 
-  assert.ok(twice.split(COMPACT_DROPPED_NOTICE).length - 1 <= 1, "the notice appears at most once");
+  assert.equal(twice.split(COMPACT_DROPPED_NOTICE).length - 1, 1, "the notice appears exactly once");
+  assert.ok(twice.startsWith(COMPACT_DROPPED_NOTICE));
   assert.ok(twice.length <= MAX_COMPACT_SUMMARY_CHARS);
   assert.ok(twice.includes("one more"), "the new message is kept");
+});
+
+test("a record that lost lines keeps saying so after a later fold that fits", () => {
+  const previous = `${COMPACT_DROPPED_NOTICE}\n- User asked: build a tower`;
+  const next = compactChatSummary(previous, [{ role: "user", text: "ok" }]);
+
+  assert.equal(next, `${COMPACT_DROPPED_NOTICE}\n- User asked: build a tower\n- User asked: ok`);
+});
+
+test("a record that never lost lines carries no notice", () => {
+  const next = compactChatSummary("- User asked: build a tower", [{ role: "user", text: "ok" }]);
+  assert.ok(!next.includes(COMPACT_DROPPED_NOTICE));
 });
 
 test("a compact record is valid only with a whole, non-negative fold count and a bounded summary", () => {
