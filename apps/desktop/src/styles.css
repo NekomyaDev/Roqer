@@ -47,6 +47,10 @@
   --accent: #5963c7;
   --accent-soft: #e9ebfa;
   --accent-border: #c8cdf0;
+  /* Discord's own blurple, kept for its mark and its button so the invite is recognisably Discord's. */
+  --discord: #5865f2;
+  --discord-hover: #4752c4;
+  --discord-soft: #eceefe;
 
   --success: #247a46;
   --success-soft: #e8f2eb;
@@ -123,6 +127,9 @@
   --accent: #9aa3ff;
   --accent-soft: #282b42;
   --accent-border: #464b70;
+  --discord: #5865f2;
+  --discord-hover: #4752c4;
+  --discord-soft: #23264a;
 
   --success: #70bd88;
   --success-soft: #1d2b21;
@@ -271,6 +278,28 @@ button:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-
 .subscription-card .runtime-badge { padding: 4px 6px; color: var(--muted); background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: 6px; font-size: var(--type-meta); font-weight: var(--weight-regular); }
 .settings-button { display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; margin-top: 8px; padding: 0 10px; color: var(--muted); background: transparent; border: 0; border-radius: 9px; font-size: var(--type-body); font-weight: var(--weight-medium); }
 .settings-button:hover { color: var(--ink); background: var(--sidebar-active); }
+.settings-row { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
+.settings-row .settings-button { flex: 1; min-width: 0; margin-top: 0; }
+
+/* The community invite is offered once as a card and then lives beside
+ * Settings as an icon. Discord's colour is the only colour it brings. */
+.community-card { margin-bottom: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--border-subtle); border-radius: 10px; box-shadow: var(--shadow-sm); }
+.community-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.community-card-head .icon-button { flex: 0 0 auto; margin: -4px -4px 0 0; }
+.community-card-mark { display: grid; flex: 0 0 auto; place-items: center; width: 32px; height: 32px; color: var(--discord); background: var(--discord-soft); border-radius: 8px; }
+.community-card-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.community-card-copy strong { color: var(--ink); font-size: var(--type-label); font-weight: var(--weight-medium); }
+.community-card-copy span { color: var(--muted); font-size: var(--type-meta); line-height: 1.45; }
+.community-join { display: flex; align-items: center; justify-content: center; gap: 8px; height: 36px; margin-top: 12px; color: #fff; background: var(--discord); border-radius: 8px; font-size: var(--type-label); font-weight: var(--weight-medium); text-decoration: none; transition: background-color .18s ease; }
+.community-join:hover { color: #fff; background: var(--discord-hover); }
+.community-icon { display: grid; flex: 0 0 auto; place-items: center; width: 44px; height: 40px; color: var(--discord); border-radius: 9px; transition: background-color .18s ease; }
+.community-icon:hover { color: var(--discord); background: var(--sidebar-active); }
+.community-join:focus-visible, .community-icon:focus-visible { outline: 2px solid var(--sidebar-indicator); outline-offset: 2px; }
+.community-icon.arrived { animation: community-arrive 1.6s ease-out; }
+@keyframes community-arrive {
+  0% { background: var(--discord-soft); box-shadow: 0 0 0 0 color-mix(in srgb, var(--discord) 45%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--discord) 0%, transparent); }
+}
 
 .workspace { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; height: 100%; background: var(--canvas); }
 .storage-notice, .restart-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 24px; border-bottom: 1px solid var(--border); color: var(--ink); background: var(--surface-sunken); }
@@ -1494,6 +1523,7 @@ a.small-button:focus-visible { outline: 2px solid var(--accent); outline-offset:
   /* A ring that spreads is travel. The card, the pulsing dot and the taskbar
      still say the run is waiting. */
   .question-dock .question-card { animation: none; }
+  .community-icon.arrived { animation: none; }
   .mock-run .message-content > *:not(.typing-indicator) { animation: fade .16s ease both; }
   .completed-run-card, .applied-status { animation: fade .16s ease both; }
   .conversation-scroll { scroll-behavior: auto; }

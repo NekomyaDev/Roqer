@@ -236,6 +236,17 @@ test("an Antigravity model choice is kept apart from the other providers'", () =
   assert.deepEqual(modelPreference("antigravity", "gemini-3.1-pro-high"), { antigravityModelId: "gemini-3.1-pro-high" });
 });
 
+test("a dismissed community invite stays dismissed, and an older workspace has not seen it", () => {
+  const workspace = createInitialWorkspace();
+  assert.equal(workspace.preferences.communityInviteDismissed, false);
+  const dismissed = normalizeWorkspace({ ...workspace, preferences: { ...workspace.preferences, communityInviteDismissed: true } });
+  assert.equal(dismissed.preferences.communityInviteDismissed, true);
+  const older: Partial<typeof workspace.preferences> = { ...workspace.preferences };
+  delete older.communityInviteDismissed;
+  assert.equal(normalizeWorkspace({ ...workspace, preferences: older }).preferences.communityInviteDismissed, false);
+  assert.equal(normalizeWorkspace({ ...workspace, preferences: { ...older, communityInviteDismissed: "yes" } }).preferences.communityInviteDismissed, false);
+});
+
 test("every provider is offered and the retired hosted gateway moves to the default", () => {
   assert.equal(isProviderId("claude"), true);
   assert.equal(isEnabledProvider("claude"), true);

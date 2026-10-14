@@ -51,6 +51,8 @@ import { RojoPill } from "./rojo-pill";
 const SEND_MODIFIER = typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
 import { providerCard } from "./provider-card";
+import { COMMUNITY_INVITE_URL, communityInvite } from "./community-invite";
+import { CommunityCard, CommunityIcon } from "./community-links";
 import { approvalCode } from "./approval-code";
 import {
   canOpenInStudio, highlightRows, parseDiffRows, sourceRows, splitChangeGroup,
@@ -278,6 +280,8 @@ function App() {
   const [showConnection, setShowConnection] = useState(false);
   const connectionRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
+  /** The community icon has just taken the dismissed card's place and pulses once. */
+  const [communityIconArrived, setCommunityIconArrived] = useState(false);
   /** Why Send opened Settings, shown at the top of it; null when it was opened by hand. */
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -979,6 +983,11 @@ function App() {
     setWorkspace((current) => ({ ...current, preferences: { ...current.preferences, ...changes } }));
   };
 
+  const dismissCommunityInvite = () => {
+    updatePreferences({ communityInviteDismissed: true });
+    setCommunityIconArrived(true);
+  };
+
   // Old message cards are intentionally memoized. Keep their action stable too,
   // while still reading the latest endpoint and Studio selection when clicked.
   const chatTarget = chatStudioTarget(workspace, workspace.selectedProjectId, workspace.selectedChatId);
@@ -1261,6 +1270,7 @@ function App() {
     : runView === null && runStarting);
   const autoPlaytest = workspace.preferences.autoPlaytest;
   const card = providerCard(provider, providerStatus, hasDesktopRuntime());
+  const invite = hydrated ? communityInvite(COMMUNITY_INVITE_URL, workspace.preferences.communityInviteDismissed, workspace.projects) : "none";
   const imagesReachModel = hasDesktopRuntime();
   const selectedModel = modelCatalog.models
     .find((model) => model.id === selectedModelId(workspace.preferences, provider)) ?? null;
@@ -1413,6 +1423,7 @@ function App() {
           })}
         </nav>
         <div className="sidebar-footer">
+          {invite === "card" && <CommunityCard url={COMMUNITY_INVITE_URL} onDismiss={dismissCommunityInvite} />}
           <div className="subscription-card"><Sparkles size={16} /><div><strong>{card.title}</strong><span>{card.detail}</span></div>{card.badge !== undefined && <span className="runtime-badge">{card.badge}</span>}</div>
           {/* The download is the part that takes a while, and it used to be
               the part nothing showed: the install button appeared only once it
@@ -1428,7 +1439,10 @@ function App() {
           {canInstallUpdate(updateState) && <button className="settings-button update-ready" onClick={() => void installUpdate()}>
             <Download size={18} /> {appUpdateMessage(updateState)}
           </button>}
-          <button className="settings-button" onClick={() => setShowSettings(true)}><Settings size={18} /> Settings</button>
+          <div className="settings-row">
+            <button className="settings-button" onClick={() => setShowSettings(true)}><Settings size={18} /> Settings</button>
+            {invite === "icon" && <CommunityIcon url={COMMUNITY_INVITE_URL} arrived={communityIconArrived} onArrived={() => setCommunityIconArrived(false)} />}
+          </div>
         </div>
       </aside>
 
