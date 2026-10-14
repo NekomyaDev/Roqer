@@ -14,7 +14,7 @@ import { createChatGptPlanner, type CodexThread } from "../runtime/chatgpt-plann
 import { createAgentLoopPlanner, type AgentLoopSession } from "../runtime/agent-loop";
 import { toolOutputBudgetFor } from "../runtime/agent-loop-history";
 import { CustomProviderStore } from "../runtime/custom-provider-store";
-import { StudioPlaceClaims, type StudioPlaceClaim } from "../runtime/studio-place-claims";
+import { RunHolds, STUDIO_PLACE_BUSY, type RunHold } from "../runtime/run-claims";
 import { bridgeEnvironment, checkOpenCloudKey } from "../runtime/open-cloud";
 import { BlenderSettings } from "../runtime/blender-settings";
 import { BlenderWorker } from "../runtime/blender-worker";
@@ -134,8 +134,6 @@ let shutdownFinishedForQuit = false;
  */
 const trustedSenders = new Set<number>();
 const runSessions = new Map<string, RunSession>();
-/** The chat each live run belongs to, so a compact never touches a conversation a run owns. */
-const runChats = new Map<string, string>();
 const runExecutions = new Set<Promise<unknown>>();
 const pendingRuns = new PendingRuns();
 /** Calls the person back to the window while a run waits on them. Null while there is no window. */
@@ -1832,9 +1830,8 @@ function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   );
 }
 
-/** One writing run per Roblox Studio place; see studio-place-claims.ts. */
-const studioPlaces = new StudioPlaceClaims();
-const STUDIO_PLACE_BUSY = "Another chat is already working in this Roblox Studio place. Wait for it to finish, or choose a different place for this chat.";
+/** One run per chat and one writing run per Roblox Studio place; see run-claims.ts. */
+const runHolds = new RunHolds();
 
 async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<RunStartResult> {
   if (!isTrusted(event.sender) || shuttingDown) return { ok: false, message: "This window may not start runs." };
@@ -1842,22 +1839,26 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
   const request = parseStartRequest(payload);
   if (!request) return { ok: false, message: "The run request was not valid." };
 
-  // A Studio place takes one writing run at a time: two runs editing the same
-  // place could overwrite each other's work. The place is claimed here, before
-  // the first await, so two starts that arrive together cannot both get it.
-  let heldPlace: StudioPlaceClaim | null = null;
-  if (request.instanceId !== null) {
-    heldPlace = studioPlaces.claim(request.instanceId);
-    if (heldPlace === null) return { ok: false, message: STUDIO_PLACE_BUSY };
-  }
-
   const sender = event.sender;
   const pending = pendingRuns.begin(sender.id, request.startId ?? randomUUID());
   const cancelled = () => pending.signal.aborted || shuttingDown || sender.isDestroyed() || !isTrusted(sender);
   const stopped: RunStartResult = { ok: false, message: "Run startup was cancelled." };
   let journalId: string | undefined;
   let executionStarted = false;
+  let hold: RunHold | undefined;
   try {
+    // The chat and its Studio place are claimed here, before the first await,
+    // so two starts that arrive together cannot both get them. A cancelled
+    // start lets go at once rather than at its next await: it never executes
+    // after the cancel, and the person may send again straight away.
+    const begun = runHolds.begin(request.chatId, request.instanceId);
+    if (!begun.ok) return { ok: false, message: begun.message };
+    const runHold = begun.hold;
+    hold = runHold;
+    pending.signal.addEventListener("abort", () => {
+      if (!executionStarted) runHold.release();
+    }, { once: true });
+
     await initializeStorage();
     if (cancelled()) return stopped;
     if (store().status().required) return { ok: false, message: "Recover your saved chats before starting a run." };
@@ -1894,8 +1895,22 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
       return { ok: false, message };
     }
 
+    // A run sent with no place still reaches one. The window sends none when
+    // its Studio status lists no place, and that status can be stale, so the
+    // place is found here: the first the bridge lists, the same default the
+    // window would have chosen. The run is bound to it, so every Studio call
+    // goes there, and it holds that place like any other run. Only a run with
+    // no Studio connected at all stays unbound.
+    let instanceId = request.instanceId;
+    if (instanceId === null) {
+      const health = await client.health(pending.signal);
+      if (cancelled()) return stopped;
+      instanceId = health.reachable ? health.instances[0]?.instanceId ?? null : null;
+      if (instanceId !== null && !runHold.holdPlace(instanceId)) return { ok: false, message: STUDIO_PLACE_BUSY };
+    }
+
     const label = providerLabel(request.provider);
-    let resolvedRequest = request;
+    let resolvedRequest: RunStartRequest = { ...request, instanceId };
     /** What the picker calls the model, for the waiting line. */
     let modelName: string | undefined;
     if (catalogRead !== undefined) {
@@ -1928,7 +1943,7 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
       if (!supported) {
         return { ok: false, message: `${model.displayName} does not support the selected reasoning effort.` };
       }
-      resolvedRequest = { ...request, model: model.id, effort };
+      resolvedRequest = { ...resolvedRequest, model: model.id, effort };
       modelName = model.displayName;
     }
 
@@ -2010,15 +2025,13 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     });
 
     runSessions.set(runId, session);
-    runChats.set(runId, request.chatId);
     // Driven from the session map rather than from one run, so a second run
     // finishing does not report the app idle while the first is still going.
     presence.setRunning(true);
     executionStarted = true;
     const execution = session.execute().finally(async () => {
       runSessions.delete(runId);
-      runChats.delete(runId);
-      studioPlaces.release(heldPlace);
+      runHold.release();
       // However the run ended, it waits on no one now.
       runAttention?.endRun(runId);
       // The saved chat refers to them from here on; the picture store's grace
@@ -2044,7 +2057,7 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
   } finally {
     pending.finish();
     if (!executionStarted) {
-      studioPlaces.release(heldPlace);
+      hold?.release();
       attachments.release(request.attachmentIds ?? []);
       if (journalId) {
         await runJournal().acknowledge([journalId]).catch((error) => console.error("Roqer could not discard a run that never started", error));
@@ -2058,12 +2071,13 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
  * Forget the provider conversations a chat keeps, after the user compacts it.
  *
  * The next run then starts from the compacted transcript instead of a provider
- * that still holds everything. Refused while a run is working on the chat: that
- * run owns the conversation until it ends, and would put the full history back.
+ * that still holds everything. Refused while a run is starting or working on
+ * the chat: that run owns the conversation until it ends, and would put the
+ * full history back.
  */
 function compactChatSessions(event: IpcMainInvokeEvent, chatId: unknown): boolean {
   if (!isTrusted(event.sender) || typeof chatId !== "string" || chatId === "" || chatId.length > 1_000) return false;
-  if ([...runChats.values()].includes(chatId)) return false;
+  if (runHolds.chatBusy(chatId)) return false;
   claudeSessions.drop(chatId);
   antigravitySessions.drop(chatId);
   codexThreads.drop(chatId);

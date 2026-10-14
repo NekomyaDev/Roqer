@@ -142,8 +142,8 @@ const isImageAttachment = (attachment: AssetAttachment): boolean =>
 
 /**
  * One chat's run as the window tracks it. A chat has at most one run at a time,
- * and several chats may run at once: the main process refuses a second run on
- * the same Studio place, and everything else is per chat.
+ * and several chats may run at once: the main process refuses a second run in
+ * the same chat or on the same Studio place, and everything else is per chat.
  */
 type ChatRun = {
   projectId: string;
@@ -644,6 +644,9 @@ function App() {
   // live view on a timer instead left both on screen together, and the reply
   // appeared to arrive twice.
   useEffect(() => {
+    // Only a run still in the map can be recorded again, so the rest are let go.
+    const tracked = new Set([...runs.values()].map((run) => run.view?.runId));
+    for (const runId of recordedRuns.current) if (!tracked.has(runId)) recordedRuns.current.delete(runId);
     const finished = [...runs.values()].filter((run) => run.view !== null && run.view.outcome !== null && !recordedRuns.current.has(run.view.runId));
     if (finished.length === 0) return;
     for (const run of finished) {
@@ -703,7 +706,6 @@ function App() {
     const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
     setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
   };
-  const runBelongsToSelectedChat = selectedRun !== null;
   const showRunControls = runStarting || runView !== null;
   /** The composer addresses the running agent rather than starting a run. */
   const steering = isRunning && !runStarting;
@@ -1278,13 +1280,13 @@ function App() {
    * left in the transcript. A run keeps appending activity while it waits, so a
    * card inside the stream scrolls away from the user it is waiting for.
    */
-  const pendingApproval = runBelongsToSelectedChat ? runView?.pendingApproval ?? null : null;
+  const pendingApproval = runView?.pendingApproval ?? null;
   /**
    * The question the run is stopped on, docked for the same reason. In the
    * stream it was drawn at the top of the run, above the plan and the reply
    * already on screen, so it arrived where nobody was looking.
    */
-  const pendingQuestion = runBelongsToSelectedChat ? runView?.pendingQuestion ?? null : null;
+  const pendingQuestion = runView?.pendingQuestion ?? null;
   /** Words in the composer while a question waits: Send will answer with them. */
   const answeringInWords = pendingQuestion !== null && (explaining || composer.trim() !== "");
   // Keyed on the three arrays the steps are built from rather than on the view,
@@ -1308,9 +1310,9 @@ function App() {
    * thinking, and the Activity heading and approval card already say what those
    * waits are, so the spinner stands down for both.
    */
-  const thinking = runBelongsToSelectedChat && (runView !== null && runView.outcome === null
+  const thinking = runView !== null && runView.outcome === null
     ? providerIsThinking(runView, runActivityNodes)
-    : runView === null && runStarting);
+    : runView === null && runStarting;
   const autoPlaytest = workspace.preferences.autoPlaytest;
   const card = providerCard(provider, providerStatus, hasDesktopRuntime());
   const invite = hydrated ? communityInvite(COMMUNITY_INVITE_URL, workspace.preferences.communityInviteDismissed, workspace.projects) : "none";
@@ -1590,11 +1592,11 @@ function App() {
           {selectedChat && selectedChat.messages.length > 0
             ? <ConversationMessages key={selectedChat.id} messages={selectedChat.messages} onOpenInStudio={openArtifactInStudio} />
             : <EmptyConversation onSuggestion={setComposer} />}
-          {runView && runBelongsToSelectedChat
+          {runView
             ? <LiveRun view={runView} steps={runSteps} nodes={runActivityNodes} onOpenInStudio={openArtifactInStudio} />
             // The run is still being started, so the dots stand in for the
             // assistant block that is about to exist.
-            : runStarting && runBelongsToSelectedChat && <div className="mock-run"><section className="message assistant-message"><div className="message-content">
+            : runStarting && <div className="mock-run"><section className="message assistant-message"><div className="message-content">
               <TypingIndicator done={false} />
             </div></section></div>}
         </div></div>
