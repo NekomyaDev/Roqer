@@ -14,10 +14,24 @@ import { createChatGptPlanner, type CodexThread } from "../runtime/chatgpt-plann
 import { createAgentLoopPlanner, type AgentLoopSession } from "../runtime/agent-loop";
 import { toolOutputBudgetFor } from "../runtime/agent-loop-history";
 import { CustomProviderStore } from "../runtime/custom-provider-store";
+import { McpServerStore } from "../runtime/mcp-server-store";
+import { ExternalMcpRunSession, testExternalMcpServer, type ResolvedMcpServer } from "../runtime/external-mcp";
+import { revokeMcpGrant, signInToMcpServer } from "../runtime/mcp-oauth";
+import { McpOAuthTokens } from "../runtime/mcp-oauth-tokens";
+import {
+  CALL_MCP_TOOL_OPERATION,
+  isMcpServerId,
+  LIST_MCP_TOOLS_OPERATION,
+  mcpToolRisk,
+  parseMcpServerSave,
+  type McpServersResult,
+  type McpServerTestResult,
+  type McpServerView,
+} from "../shared/mcp-servers";
 import { RunHolds, STUDIO_PLACE_BUSY, type RunHold } from "../runtime/run-claims";
 import { bridgeEnvironment, checkOpenCloudKey } from "../runtime/open-cloud";
 import { BlenderSettings } from "../runtime/blender-settings";
-import { BlenderWorker } from "../runtime/blender-worker";
+import { BlenderWorker, scriptEnvironment } from "../runtime/blender-worker";
 import { RojoConnection } from "../runtime/rojo-connection";
 import { RojoLinksStore } from "../runtime/rojo-links";
 import {
@@ -262,6 +276,32 @@ function customProviders(): CustomProviderStore {
     protector: electronSecretProtector,
   });
   return customProviderStore;
+}
+
+let mcpServerStore: McpServerStore | null = null;
+
+/** The MCP servers the user added, with their keys encrypted by the OS. */
+function mcpServers(): McpServerStore {
+  mcpServerStore ??= new McpServerStore({
+    file: path.join(app.getPath("userData"), "mcp-servers.json"),
+    protector: electronSecretProtector,
+  });
+  return mcpServerStore;
+}
+
+let mcpOAuthTokenKeeper: McpOAuthTokens | null = null;
+
+/** The OAuth servers' tokens, renewed as they expire; one keeper so renewals are shared. */
+function mcpOAuthTokens(): McpOAuthTokens {
+  mcpOAuthTokenKeeper ??= new McpOAuthTokens(mcpServers());
+  return mcpOAuthTokenKeeper;
+}
+
+/** A resolved server, with its tokens when it signs in with OAuth. */
+function withMcpAuthorization(resolved: ResolvedMcpServer): ResolvedMcpServer {
+  return resolved.server.auth === "oauth"
+    ? { ...resolved, authorization: mcpOAuthTokens().authorizationFor(resolved.server) }
+    : resolved;
 }
 
 let openCloudStore: OpenCloudStore | null = null;
@@ -1530,6 +1570,140 @@ async function importCustomModels(event: IpcMainInvokeEvent, connectionId: unkno
   }
 }
 
+// -- The user's MCP servers --------------------------------------------------
+// Roqer is the client: a provider never connects to these. The renderer edits
+// the list, but a program to run is saved only after the user allows it in a
+// dialog this process shows, and keys go in and never come back out.
+
+async function mcpServersResult(servers: readonly McpServerView[]): Promise<McpServersResult> {
+  const preserved = mcpServers().takeDamagedNotice();
+  return preserved === undefined
+    ? { ok: true, servers }
+    : { ok: false, message: `Your saved MCP servers could not be read and were set aside at ${preserved}. Add them again.` };
+}
+
+async function listMcpServers(event: IpcMainInvokeEvent): Promise<McpServersResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not read MCP servers." };
+  try {
+    return await mcpServersResult(await mcpServers().list());
+  } catch (error) {
+    return storeFailure(error, "Your MCP servers could not be read.");
+  }
+}
+
+async function saveMcpServer(event: IpcMainInvokeEvent, payload: unknown): Promise<McpServersResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not change MCP servers." };
+  const parsed = parseMcpServerSave(payload);
+  if (!parsed.ok) return parsed;
+  const window = BrowserWindow.fromWebContents(event.sender);
+  try {
+    const servers = await mcpServers().save(parsed.save, async ({ name, commandLine }) => {
+      const options: MessageBoxOptions = {
+        type: "warning",
+        buttons: ["Allow", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+        title: "Run an MCP server",
+        message: `Let Roqer run the ${name} MCP server?`,
+        detail: `Whenever the agent uses ${name}, Roqer will start this program on your computer, with your permissions:\n\n${commandLine}\n\n` +
+          "Only allow a program you trust. The agent's calls to it are approved by the risk you set for each tool.",
+      };
+      const choice = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options);
+      return choice.response === 0;
+    });
+    return { ok: true, servers };
+  } catch (error) {
+    return storeFailure(error, "The server could not be saved.");
+  }
+}
+
+async function removeMcpServer(event: IpcMainInvokeEvent, id: unknown): Promise<McpServersResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not change MCP servers." };
+  if (!isMcpServerId(id)) return { ok: false, message: "That server was not valid." };
+  try {
+    return { ok: true, servers: await mcpServers().remove(id) };
+  } catch (error) {
+    return storeFailure(error, "The server could not be removed.");
+  }
+}
+
+async function testMcpServer(event: IpcMainInvokeEvent, id: unknown): Promise<McpServerTestResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not test MCP servers." };
+  if (!isMcpServerId(id)) return { ok: false, message: "That server was not valid." };
+  try {
+    const resolved = await mcpServers().resolve({ id });
+    if (resolved === undefined) return { ok: false, message: "Save the server before testing it." };
+    return await testExternalMcpServer(withMcpAuthorization(resolved), { clientVersion: app.getVersion(), baseEnv: scriptEnvironment(process.env) });
+  } catch (error) {
+    return storeFailure(error, "The server could not be tested.");
+  }
+}
+
+/** The sign-in waiting in the browser, if one is; there is only ever one. */
+let mcpSignIn: AbortController | null = null;
+
+/**
+ * Sign in to an OAuth server. The renderer names the server and nothing else:
+ * where to sign in comes from the server's own metadata, the page opens in
+ * the user's browser, and the tokens stay in this process.
+ */
+async function signInMcpServer(event: IpcMainInvokeEvent, id: unknown): Promise<McpServersResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not sign in to MCP servers." };
+  if (!isMcpServerId(id)) return { ok: false, message: "That server was not valid." };
+  if (mcpSignIn !== null) return { ok: false, message: "Another sign-in is open in your browser. Finish or cancel it first." };
+  const controller = new AbortController();
+  mcpSignIn = controller;
+  try {
+    const resolved = await mcpServers().resolve({ id });
+    if (resolved === undefined) return { ok: false, message: "Save the server before signing in." };
+    const { server } = resolved;
+    if (server.transport !== "http" || server.auth !== "oauth" || server.url === undefined) {
+      return { ok: false, message: "Turn on OAuth sign-in for this server and save it first." };
+    }
+    const previous = await mcpServers().oauthGrant(id).catch(() => undefined);
+    const grant = await signInToMcpServer(
+      { url: server.url, ...(server.oauthClientId === undefined ? {} : { oauthClientId: server.oauthClientId }) },
+      previous,
+      {
+        signal: controller.signal,
+        // The authorization server's own page, from its checked metadata: HTTPS only.
+        openBrowser: async (url) => {
+          if (new URL(url).protocol !== "https:") throw new Error("The sign-in page is not HTTPS.");
+          await shell.openExternal(url);
+        },
+      },
+    );
+    return { ok: true, servers: await mcpServers().setOAuthGrant(id, grant, server) };
+  } catch (error) {
+    return storeFailure(error, "The sign-in did not finish.");
+  } finally {
+    if (mcpSignIn === controller) mcpSignIn = null;
+  }
+}
+
+function cancelMcpSignIn(event: IpcMainInvokeEvent): boolean {
+  if (!isTrusted(event.sender) || mcpSignIn === null) return false;
+  mcpSignIn.abort();
+  return true;
+}
+
+/** Forget a server's sign-in here, and ask its provider to forget it too. */
+async function signOutMcpServer(event: IpcMainInvokeEvent, id: unknown): Promise<McpServersResult> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not sign out of MCP servers." };
+  if (!isMcpServerId(id)) return { ok: false, message: "That server was not valid." };
+  try {
+    const resolved = await mcpServers().resolve({ id });
+    if (resolved === undefined) return { ok: false, message: "That server no longer exists." };
+    const grant = await mcpServers().oauthGrant(id).catch(() => undefined);
+    const servers = await mcpServers().setOAuthGrant(id, undefined, resolved.server);
+    if (grant !== undefined) void revokeMcpGrant(grant);
+    return { ok: true, servers };
+  } catch (error) {
+    return storeFailure(error, "The server could not be signed out.");
+  }
+}
+
 function clientAgentRuntime(): Promise<AgentRuntime> {
   agentRuntimePromise ??= loadAgentRuntime(path.join(__dirname, "agent"));
   return agentRuntimePromise;
@@ -1559,6 +1733,7 @@ async function resolveCustomRun(modelKey: string | null): Promise<CustomRun | { 
 /** The agent that drives a run, chosen by the provider the user connected. */
 function plannerFor(
   request: RunStartRequest, agentRuntime: AgentRuntime, runId: string, modelName: string | undefined, custom?: CustomRun, blender = false, referenceClips = false,
+  externalMcp = false,
 ): Planner {
   const cwd = app.getPath("userData");
   // A conversation kept by one provider has not seen what another provider
@@ -1590,6 +1765,7 @@ function plannerFor(
       }, then ask it to continue.`,
       blender,
       referenceClips,
+      externalMcp,
       chatId: request.chatId,
       sessions: customConversations,
       transportKey: customTransportKey(custom),
@@ -1613,6 +1789,7 @@ function plannerFor(
       sessions: claudeSessions,
       blender,
       referenceClips,
+      externalMcp,
     });
   }
   if (request.provider === "antigravity") {
@@ -1630,6 +1807,7 @@ function plannerFor(
       sessions: antigravitySessions,
       blender,
       referenceClips,
+      externalMcp,
     });
   }
   if (request.provider !== "chatgpt") throw new Error(`No planner drives ${providerLabel(request.provider)}.`);
@@ -1645,6 +1823,7 @@ function plannerFor(
     sessions: codexThreads,
     blender,
     referenceClips,
+    externalMcp,
   });
 }
 
@@ -1967,7 +2146,14 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     // the job itself checks again, so switching it off mid-run stops new jobs.
     const blender = !smokeTest && (await blenderSettings().ready().catch(() => undefined)) !== undefined;
     if (cancelled()) return stopped;
-    const planner = smokeTest ? createInspectionPlanner() : plannerFor(resolvedRequest, agentRuntime, runId, modelName, customRun, blender, clips);
+    // The same for the user's MCP servers: offered while one is on, and each
+    // call reads the servers again, so turning one off stops new calls to it.
+    // Reading them here also loads what the engine classifies calls against.
+    const externalMcp = !smokeTest && (await mcpServers().list().catch(() => [])).some((server) => server.enabled);
+    if (cancelled()) return stopped;
+    const planner = smokeTest
+      ? createInspectionPlanner()
+      : plannerFor(resolvedRequest, agentRuntime, runId, modelName, customRun, blender, clips, externalMcp);
     journalId = runId;
     await runJournal().start(runId, request, request.prompt, request.approvalMode);
     if (cancelled()) return stopped;
@@ -1977,6 +2163,14 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     }
     /** The pictures this run stored, held in the picture store until it ends. */
     const heldPictures = new Set<string>();
+    /** This run's connections to the user's MCP servers, all closed when it ends. */
+    const externalMcpSession = externalMcp
+      ? new ExternalMcpRunSession({
+        source: { enabled: async () => (await mcpServers().enabled()).map(withMcpAuthorization) },
+        clientVersion: app.getVersion(),
+        baseEnv: scriptEnvironment(process.env),
+      })
+      : undefined;
     const session = new RunSession({
       caller: withLocalOperations(client, new Map<string, LocalOperation>([
         [CAPTURE_MOMENTS_OPERATION, (args, options, studio) => captureMoments(
@@ -1998,6 +2192,12 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
         ...(clips
           ? [[REFERENCE_CLIP_OPERATION, (args, options) => readReferenceClip(args, options, chatClips(request.chatId), composeClipSheet)] as [string, LocalOperation]]
           : []),
+        ...(externalMcpSession === undefined
+          ? []
+          : [
+            [LIST_MCP_TOOLS_OPERATION, (args, options) => externalMcpSession.list(args, options)] as [string, LocalOperation],
+            [CALL_MCP_TOOL_OPERATION, (args, options) => externalMcpSession.call(args, options)] as [string, LocalOperation],
+          ]),
       ])),
       bridge: bridgeRecoveryFor(client.endpoint),
       planner,
@@ -2006,6 +2206,12 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
       previewImage: previewToolImage,
       storeModelPreview: (glbBase64: string) => storeModelPreview(blenderJobsRoot(), glbBase64),
       rojoLinked: (instanceId: string | null) => rojoConnection().isLinked(instanceId),
+      // Read as Settings has it now, so a risk the user raises mid-run applies
+      // to the next call. A server turned off has no tools to classify.
+      mcpToolRisk: (server: string, tool: string) => {
+        const config = mcpServers().peek()?.find((entry) => entry.name === server && entry.enabled);
+        return config === undefined ? undefined : mcpToolRisk(config, tool);
+      },
       // Each picture is held for as long as the run goes, so no clean-up
       // removes it before the chat that records the run is saved.
       storePicture: async (dataUrl: string) => {
@@ -2030,6 +2236,11 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     presence.setRunning(true);
     executionStarted = true;
     const execution = session.execute().finally(async () => {
+      // Every server this run started stops with it, whichever way it ended.
+      // Begun first and awaited last, so it holds up nothing else here, and
+      // shutdown, which waits on this, does not leave a server running.
+      const closingServers = externalMcpSession?.close()
+        .catch((error) => console.error("Roqer could not close the run's MCP servers:", error));
       runSessions.delete(runId);
       runHold.release();
       // However the run ended, it waits on no one now.
@@ -2042,10 +2253,14 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
         void restartBridgeForOpenCloud().catch((error) => console.error("Roqer could not restart the Studio bridge with new Open Cloud settings:", error));
       }
       attachments.release(request.attachmentIds ?? []);
-      if (discardedRuns.delete(runId)) {
-        await runJournal().acknowledge([runId]);
-        journalRuns.delete(runId);
-        completedRuns.delete(runId);
+      try {
+        if (discardedRuns.delete(runId)) {
+          await runJournal().acknowledge([runId]);
+          journalRuns.delete(runId);
+          completedRuns.delete(runId);
+        }
+      } finally {
+        await closingServers;
       }
     });
     runExecutions.add(execution);
@@ -2545,6 +2760,13 @@ app.whenReady().then(async () => {
   ipcMain.handle("open-cloud:get", getOpenCloudSettings);
   ipcMain.handle("open-cloud:save", saveOpenCloudSettings);
   ipcMain.handle("open-cloud:check", checkOpenCloudSettings);
+  ipcMain.handle("mcp-servers:list", listMcpServers);
+  ipcMain.handle("mcp-servers:save", saveMcpServer);
+  ipcMain.handle("mcp-servers:remove", removeMcpServer);
+  ipcMain.handle("mcp-servers:test", testMcpServer);
+  ipcMain.handle("mcp-servers:sign-in", signInMcpServer);
+  ipcMain.handle("mcp-servers:cancel-sign-in", cancelMcpSignIn);
+  ipcMain.handle("mcp-servers:sign-out", signOutMcpServer);
   ipcMain.handle("blender:get", getBlenderSettings);
   ipcMain.handle("blender:set-enabled", setBlenderEnabled);
   ipcMain.handle("blender:choose", chooseBlender);

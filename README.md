@@ -45,6 +45,7 @@ a sword, the Scarlet Requiem, with a combo, a flash step, and three special atta
 - **Rojo projects.** Link a Rojo-synced place and script edits, new scripts and models, removals, and renames save to your project files, so they show up in `git diff`.
 - **You stay in control.** Choose how much it may do on its own, from Read only to Full auto, and see every script change as a diff.
 - **Built for Roblox.** Bundled Roblox skills, Creator Store search and insertion, and Open Cloud uploads with your own key.
+- **Your own MCP servers.** Add other MCP servers in Settings and the agent can use their tools, with the risk of each tool set by you and every call approved like a Studio call.
 - **Local.** No Roqer account or server. Chats are saved on your computer, and the conversation goes straight to your model provider.
 
 ## Getting started
@@ -81,6 +82,7 @@ claude mcp add robloxstudio -- node C:\path\to\Roqer\packages\robloxstudio-mcp\d
 - [Building from source](docs/building-from-source.md)
 - [Configuration](docs/configuration.md)
 - [3D modeling with Blender](docs/blender.md)
+- [Your own MCP servers](docs/mcp-servers.md)
 - [Character animation](docs/animation.md)
 - [The Studio MCP server](docs/mcp-server.md)
 - [Rojo projects](docs/rojo.md)
@@ -93,7 +95,6 @@ What Roqer is working toward. Plans can change; [open an issue](https://github.c
 
 - MacOS support
 - Model-written compact summaries. Manual compact (https://github.com/S4US/Roqer/issues/63) writes its record from what the chat recorded; a model could write a fuller one.
-- Add custom MCP connections
 - Web search. An optional switch that lets the model search the web during a run, with each search shown in the run's activity.
 
 ## Contributing

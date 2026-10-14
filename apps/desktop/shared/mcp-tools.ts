@@ -1,4 +1,5 @@
 import { GATEWAY_TOOL_RISK, isGatewayOperation } from "./gateway-operations";
+import { CALL_MCP_TOOL_OPERATION, LIST_MCP_TOOLS_OPERATION } from "./mcp-servers";
 import type { ToolRisk } from "./policy";
 
 /**
@@ -105,6 +106,10 @@ export const LOCAL_TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   // Tiles frames Roqer already stored from a clip the user attached to the
   // chat: it reads nothing else and changes nothing.
   read_reference_clip: "read",
+  // Asks the user's own MCP servers which tools they have. Calling one of
+  // those tools, `call_mcp_tool`, is in no table: its risk is the one the user
+  // set for that tool, which the run engine looks up per call.
+  [LIST_MCP_TOOLS_OPERATION]: "read",
 };
 
 /**
@@ -214,6 +219,12 @@ const TOOL_TIMEOUT_MS: Readonly<Record<string, number>> = {
   upload_assets: 300_000,
   // Up to sixteen stored frames read from disk and tiled; nothing waits on Studio.
   read_reference_clip: 60_000,
+  // Starting a stdio server can mean `npx` downloading it first; the session
+  // allows a minute for that and twenty seconds for the list itself.
+  [LIST_MCP_TOOLS_OPERATION]: 90_000,
+  // A third party's tool, whose worst case Roqer cannot know: generous, and
+  // still bounded so a hung server does not hold the run.
+  [CALL_MCP_TOOL_OPERATION]: 120_000,
 };
 
 /**
@@ -418,6 +429,14 @@ function summarizeUploads(args: Record<string, unknown>): string {
 export function summarizeToolCall(tool: string, args: Record<string, unknown>): string {
   // A Blender job's only argument is its script, which is no summary.
   if (tool === "run_blender_script") return tool;
+  // Which server and tool is the whole of what an approval has to say; the
+  // card shows the arguments themselves.
+  if (tool === CALL_MCP_TOOL_OPERATION || tool === LIST_MCP_TOOLS_OPERATION) {
+    const server = typeof args.server === "string" && args.server !== "" ? truncate(args.server, 32) : undefined;
+    const name = typeof args.tool === "string" && args.tool !== "" ? truncate(args.tool, 64) : undefined;
+    if (server === undefined) return tool;
+    return `${tool} · ${name === undefined ? server : `${server}/${name}`}`;
+  }
   if (tool === "animation") return summarizeAnimation(args);
   if (tool === "upload_assets") return summarizeUploads(args);
   for (const key of IDENTIFYING_ARGUMENTS) {

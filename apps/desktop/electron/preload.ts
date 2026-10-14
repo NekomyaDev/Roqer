@@ -38,6 +38,9 @@ import {
   type OpenCloudSettingsResult,
 } from "../shared/open-cloud";
 import { isBlenderSettingsResult, type BlenderSettingsResult } from "../shared/blender";
+import {
+  isMcpServersResult, isMcpServerTestResult, type McpServerSave, type McpServersResult, type McpServerTestResult,
+} from "../shared/mcp-servers";
 import { isRojoResult, type RojoResult } from "../shared/rojo";
 import { isModelPreviewResult, type ModelPreviewResult } from "../shared/model-preview";
 import { isEvidencePictureResult, type EvidencePictureResult } from "../shared/evidence-picture";
@@ -204,6 +207,31 @@ const blender = {
   redetect: () => blenderRequest("blender:redetect"),
 };
 
+async function mcpServersRequest(channel: string, ...args: unknown[]): Promise<McpServersResult> {
+  const value: unknown = await ipcRenderer.invoke(channel, ...args);
+  return isMcpServersResult(value) ? value : { ok: false, message: "Roqer returned invalid MCP servers." };
+}
+
+/**
+ * The user's own MCP servers. Keys go in with `save` and never come back out:
+ * what returns names them only. A program to run is saved only after the user
+ * allows it in a dialog the main process shows. An OAuth sign-in is started by
+ * naming the server; its tokens never come back.
+ */
+const mcpServers = {
+  list: () => mcpServersRequest("mcp-servers:list"),
+  save: (server: McpServerSave) => mcpServersRequest("mcp-servers:save", server),
+  remove: (id: string) => mcpServersRequest("mcp-servers:remove", id),
+  test: async (id: string): Promise<McpServerTestResult> => {
+    const value: unknown = await ipcRenderer.invoke("mcp-servers:test", id);
+    return isMcpServerTestResult(value) ? value : { ok: false, message: "The server test returned an invalid result." };
+  },
+  /** Sign in to an OAuth server in the browser. Resolves when the sign-in finishes, fails or is cancelled. */
+  signIn: (id: string) => mcpServersRequest("mcp-servers:sign-in", id),
+  cancelSignIn: async (): Promise<boolean> => (await ipcRenderer.invoke("mcp-servers:cancel-sign-in")) === true,
+  signOut: (id: string) => mcpServersRequest("mcp-servers:sign-out", id),
+};
+
 async function rojoRequest(channel: string, ...args: unknown[]): Promise<RojoResult> {
   const value: unknown = await ipcRenderer.invoke(channel, ...args);
   return isRojoResult(value) ? value : { ok: false, message: "Roqer returned an invalid Rojo link." };
@@ -345,6 +373,7 @@ contextBridge.exposeInMainWorld("workbenchDesktop", {
   customProviders,
   openCloud,
   blender,
+  mcpServers,
   rojo,
   runs,
   chats,

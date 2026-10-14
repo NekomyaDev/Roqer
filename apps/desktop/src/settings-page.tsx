@@ -11,6 +11,7 @@ import { accountDetail } from "./account-detail";
 import { BlenderSettings } from "./blender-settings";
 import { DiagnosticsActions } from "./diagnostics-actions";
 import { EndpointPage, endpointDetail, useCustomConnections } from "./custom-connections";
+import { McpServerSettings, type McpServerVisit } from "./mcp-server-settings";
 import { OpenCloudSettings } from "./open-cloud-settings";
 import {
   cancelProviderLogin, getAppVersion, getProviderLimits, getProviderStatus, installProviderClient, loginProvider, openProviderLogin, submitProviderCode,
@@ -25,18 +26,20 @@ import { SettingsGroup, SettingsRow, SettingsSwitch } from "./settings-parts";
  * The earlier dialog grew a second dialog for each endpoint and a dropdown on
  * top of that, three layers of floating panels with nothing that felt like a
  * place. Here each subject has its own page, reached from a sidebar, and an
- * endpoint opens as a page within Models.
+ * endpoint opens as a page within Models, as an MCP server does within MCP
+ * servers.
  *
  * Which provider runs a chat is not a setting: it is chosen in the composer,
  * beside the model. This page only says what is available to choose from.
  */
 
-export type SettingsSectionId = "models" | "roblox" | "blender" | "app";
+export type SettingsSectionId = "models" | "roblox" | "blender" | "mcp" | "app";
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSectionId; label: string }> = [
   { id: "models", label: "Models" },
   { id: "roblox", label: "Roblox" },
   { id: "blender", label: "Blender" },
+  { id: "mcp", label: "MCP servers" },
   { id: "app", label: "App" },
 ];
 
@@ -86,7 +89,9 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
 }) {
   const [section, setSection] = useState<SettingsSectionId>("models");
   const [endpoint, setEndpoint] = useState<EndpointView | null>(null);
-  const [endpointDirty, setEndpointDirty] = useState(false);
+  const [mcpServer, setMcpServer] = useState<McpServerVisit | null>(null);
+  /** Whether the open endpoint or MCP server page holds unsaved changes. */
+  const [pageDirty, setPageDirty] = useState(false);
   const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const endpoints = useCustomConnections();
   const mainRef = useRef<HTMLElement>(null);
@@ -99,11 +104,11 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
     return () => { cancelled = true; };
   }, []);
 
-  /** Leave the endpoint page, asking first when it holds unsaved changes. */
+  /** Leave the endpoint or server page, asking first when it holds unsaved changes. */
   const guarded = useCallback((leave: () => void) => {
-    if (endpointDirty) setPendingLeave(() => leave);
+    if (pageDirty) setPendingLeave(() => leave);
     else leave();
-  }, [endpointDirty]);
+  }, [pageDirty]);
 
   const close = useCallback(() => guarded(onClose), [guarded, onClose]);
 
@@ -119,11 +124,12 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
   // A new page starts at its top, the way a page does.
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
-  }, [section, endpoint]);
+  }, [section, endpoint, mcpServer]);
 
   const openSection = (next: SettingsSectionId) => guarded(() => {
     setSection(next);
     setEndpoint(null);
+    setMcpServer(null);
   });
 
   const editing = endpoint?.id === undefined
@@ -149,7 +155,7 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
             key={endpoint.key}
             connection={editing}
             onBack={() => guarded(() => setEndpoint(null))}
-            onDirtyChange={setEndpointDirty}
+            onDirtyChange={setPageDirty}
             onSaved={(connections: readonly CustomConnectionView[], saved: CustomConnectionView) => {
               endpoints.setConnections(connections);
               setEndpoint((current) => current === null ? null : { key: current.key, id: saved.id });
@@ -157,7 +163,7 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
             }}
             onRemoved={(connections) => {
               endpoints.setConnections(connections);
-              setEndpointDirty(false);
+              setPageDirty(false);
               setEndpoint(null);
               onProviderChanged();
             }}
@@ -207,6 +213,13 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
           <BlenderSettings />
         </>}
 
+        {section === "mcp" && <McpServerSettings
+          visit={mcpServer}
+          onVisit={setMcpServer}
+          guarded={guarded}
+          onDirtyChange={setPageDirty}
+        />}
+
         {section === "app" && <>
           <PageHead title="App" />
           <SettingsGroup>
@@ -246,11 +259,12 @@ export function SettingsPage({ preferences, studioStatus, updateState, notice, o
     </main>
 
     {pendingLeave !== null && <LeaveConfirm
+      subject={section === "mcp" ? "This server" : "This endpoint"}
       onStay={() => setPendingLeave(null)}
       onLeave={() => {
         const leave = pendingLeave;
         setPendingLeave(null);
-        setEndpointDirty(false);
+        setPageDirty(false);
         leave();
       }}
     />}
@@ -429,7 +443,7 @@ function AccountRow({ provider, onChanged }: { provider: ProviderId; onChanged: 
   </>;
 }
 
-function LeaveConfirm({ onStay, onLeave }: { onStay: () => void; onLeave: () => void }) {
+function LeaveConfirm({ subject, onStay, onLeave }: { subject: string; onStay: () => void; onLeave: () => void }) {
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -442,7 +456,7 @@ function LeaveConfirm({ onStay, onLeave }: { onStay: () => void; onLeave: () => 
   return <div className="modal-backdrop" role="presentation" onMouseDown={onStay}>
     <div className="name-modal" role="alertdialog" aria-modal="true" aria-label="Discard changes?" onMouseDown={(event) => event.stopPropagation()}>
       <div className="modal-header"><div><h2>Discard changes?</h2></div><button type="button" className="icon-button" onClick={onStay} aria-label="Keep editing"><X size={19} /></button></div>
-      <p>This endpoint has changes that are not saved yet.</p>
+      <p>{subject} has changes that are not saved yet.</p>
       <div className="modal-actions">
         <button type="button" className="secondary-action" autoFocus onClick={onStay}>Keep editing</button>
         <button type="button" className="danger-action" onClick={onLeave}>Discard</button>

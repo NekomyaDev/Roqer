@@ -5,6 +5,8 @@ import { blenderToolDefinition, parseBlenderToolInput } from "./blender-tool";
 import { BLENDER_TOOL_NAME } from "../shared/blender";
 import { REFERENCE_CLIP_TOOL_NAME } from "../shared/reference-clip";
 import { parseReferenceClipToolInput, referenceClipToolDefinition } from "./reference-clip";
+import { EXTERNAL_MCP_TOOL_NAME } from "../shared/mcp-servers";
+import { externalMcpToolDefinition, parseExternalMcpToolInput } from "./external-mcp-tool";
 import { skillToolDefinition, SKILL_TOOL_NAME, type SkillToolRunner } from "./skill-tool";
 import {
   createStudioToolRunner, MalformedToolCallError, malformedCallsEndRun, MAX_CONSECUTIVE_MALFORMED_CALLS, parseStudioToolInput, studioToolDescription, studioToolInputSchema,
@@ -31,6 +33,8 @@ export type WorkbenchToolOptions = {
   blender?: boolean;
   /** Offer `reference_clip`: only in a chat holding a clip the user attached. */
   referenceClips?: boolean;
+  /** Offer `external_mcp`: only while the user has at least one MCP server turned on. */
+  externalMcp?: boolean;
 };
 
 /** Every tool granted for these options, in the order they are announced. */
@@ -39,6 +43,7 @@ export function workbenchToolNames(options: WorkbenchToolOptions): string[] {
     STUDIO_TOOL_NAME, SKILL_TOOL_NAME, ICON_TOOL_NAME, TASK_TOOL_NAME, QUESTION_TOOL_NAME,
     ...(options.blender === true ? [BLENDER_TOOL_NAME] : []),
     ...(options.referenceClips === true ? [REFERENCE_CLIP_TOOL_NAME] : []),
+    ...(options.externalMcp === true ? [EXTERNAL_MCP_TOOL_NAME] : []),
   ];
 }
 
@@ -49,6 +54,7 @@ export function workbenchMcpTools(options: WorkbenchToolOptions): WorkbenchMcpTo
     skillToolDefinition(options.skillLibrary), iconToolDefinition(), taskToolDefinition(), questionToolDefinition(),
     ...(options.blender === true ? [blenderToolDefinition()] : []),
     ...(options.referenceClips === true ? [referenceClipToolDefinition()] : []),
+    ...(options.externalMcp === true ? [externalMcpToolDefinition()] : []),
   ];
 }
 
@@ -112,7 +118,9 @@ export function createWorkbenchToolInvoker(context: PlannerContext, options: Wor
         ? parseBlenderToolInput(args)
         : options.referenceClips === true && name === REFERENCE_CLIP_TOOL_NAME
           ? parseReferenceClipToolInput(args)
-          : parseStudioToolInput(args);
+          : options.externalMcp === true && name === EXTERNAL_MCP_TOOL_NAME
+            ? parseExternalMcpToolInput(args)
+            : parseStudioToolInput(args);
     } catch (error) {
       // A malformed call is the model's mistake to correct, answered like
       // any failed call; only a run of them that is not converging ends it.

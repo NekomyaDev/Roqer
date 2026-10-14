@@ -76,6 +76,8 @@ export type ClaudePlannerOptions = {
   blender?: boolean;
   /** Offer `reference_clip`: only in a chat holding a clip the user attached. */
   referenceClips?: boolean;
+  /** Offer `external_mcp`: only while the user has at least one MCP server turned on. */
+  externalMcp?: boolean;
 };
 
 const isRecord = (value: unknown): value is JsonRecord =>
@@ -652,6 +654,7 @@ function sessionKey(options: ClaudePlannerOptions, { autoPlaytest, instanceId }:
     instanceId,
     options.model, options.supportsEffort ? options.effort : null, autoPlaytest,
     options.agent.id, options.agent.version, options.blender === true, options.referenceClips === true,
+    options.externalMcp === true,
   ]);
 }
 

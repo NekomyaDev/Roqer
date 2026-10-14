@@ -11,6 +11,7 @@ import type {
 } from "../shared/custom-providers";
 import type { OpenCloudCheckResult, OpenCloudSave, OpenCloudSettingsResult } from "../shared/open-cloud";
 import type { BlenderSettingsResult } from "../shared/blender";
+import type { McpServerSave, McpServersResult, McpServerTestResult } from "../shared/mcp-servers";
 import type { RojoResult } from "../shared/rojo";
 import type { ModelPreviewResult } from "../shared/model-preview";
 import type { EvidencePictureResult } from "../shared/evidence-picture";
@@ -89,6 +90,17 @@ declare global {
         setEnabled(enabled: boolean): Promise<BlenderSettingsResult>;
         choose(): Promise<BlenderSettingsResult>;
         redetect(): Promise<BlenderSettingsResult>;
+      };
+      mcpServers: {
+        list(): Promise<McpServersResult>;
+        save(save: McpServerSave): Promise<McpServersResult>;
+        remove(id: string): Promise<McpServersResult>;
+        /** Connects to the saved server and lists its tools. */
+        test(id: string): Promise<McpServerTestResult>;
+        /** Signs in to a saved OAuth server in the browser; resolves when it finishes, fails or is cancelled. */
+        signIn(id: string): Promise<McpServersResult>;
+        cancelSignIn(): Promise<boolean>;
+        signOut(id: string): Promise<McpServersResult>;
       };
       rojo: {
         get(instanceId: string | null): Promise<RojoResult>;
