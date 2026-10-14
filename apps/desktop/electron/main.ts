@@ -18,8 +18,10 @@ import { McpServerStore } from "../runtime/mcp-server-store";
 import { ExternalMcpRunSession, testExternalMcpServer, type ResolvedMcpServer } from "../runtime/external-mcp";
 import { revokeMcpGrant, signInToMcpServer } from "../runtime/mcp-oauth";
 import { McpOAuthTokens } from "../runtime/mcp-oauth-tokens";
+import { pruneMcpDownloads } from "../runtime/mcp-download";
 import {
   CALL_MCP_TOOL_OPERATION,
+  DOWNLOAD_MCP_FILE_OPERATION,
   isMcpServerId,
   LIST_MCP_TOOLS_OPERATION,
   mcpToolRisk,
@@ -287,6 +289,11 @@ function mcpServers(): McpServerStore {
     protector: electronSecretProtector,
   });
   return mcpServerStore;
+}
+
+/** Where runs save files the user's MCP servers made, one folder per run. */
+function mcpDownloadsRoot(): string {
+  return path.join(app.getPath("userData"), "mcp-downloads");
 }
 
 let mcpOAuthTokenKeeper: McpOAuthTokens | null = null;
@@ -2169,8 +2176,11 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
         source: { enabled: async () => (await mcpServers().enabled()).map(withMcpAuthorization) },
         clientVersion: app.getVersion(),
         baseEnv: scriptEnvironment(process.env),
+        // Files a server made, saved so they can be uploaded; a week later they go.
+        downloadDirectory: path.join(mcpDownloadsRoot(), runId),
       })
       : undefined;
+    if (externalMcpSession !== undefined) void pruneMcpDownloads(mcpDownloadsRoot());
     const session = new RunSession({
       caller: withLocalOperations(client, new Map<string, LocalOperation>([
         [CAPTURE_MOMENTS_OPERATION, (args, options, studio) => captureMoments(
@@ -2197,6 +2207,7 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
           : [
             [LIST_MCP_TOOLS_OPERATION, (args, options) => externalMcpSession.list(args, options)] as [string, LocalOperation],
             [CALL_MCP_TOOL_OPERATION, (args, options) => externalMcpSession.call(args, options)] as [string, LocalOperation],
+            [DOWNLOAD_MCP_FILE_OPERATION, (args, options) => externalMcpSession.download(args, options)] as [string, LocalOperation],
           ]),
       ])),
       bridge: bridgeRecoveryFor(client.endpoint),

@@ -3,12 +3,12 @@ import test from "node:test";
 
 import { ExternalMcpRunSession, testExternalMcpServer, type ResolvedMcpServer } from "./external-mcp";
 import type { ExternalMcpConnection, ExternalMcpTarget, ExternalMcpTool } from "./external-mcp-client";
-import { parseExternalMcpToolInput } from "./external-mcp-tool";
+import { externalMcpToolDefinition, parseExternalMcpToolInput } from "./external-mcp-tool";
 import { withLocalOperations } from "./local-operations";
 import type { McpToolCaller, McpToolOutcome } from "./mcp-types";
 import { RunSession, type PlannerContext } from "./run-engine";
 import { MalformedToolCallError } from "./studio-tools";
-import { CALL_MCP_TOOL_OPERATION, LIST_MCP_TOOLS_OPERATION, type McpServerConfig } from "../shared/mcp-servers";
+import { CALL_MCP_TOOL_OPERATION, DOWNLOAD_MCP_FILE_OPERATION, LIST_MCP_TOOLS_OPERATION, type McpServerConfig } from "../shared/mcp-servers";
 import type { ApprovalMode, ToolRisk } from "../shared/policy";
 import { isRunEvent, type RunEvent, type RunRequest } from "../shared/run-events";
 
@@ -209,9 +209,9 @@ test("a run connects only when it first needs a server, lists with each tool's r
   const listed = await session.list({}, {});
   assert.equal(listed.ok, true);
   assert.match(listed.text, /^Everything below comes from the user's own MCP servers/);
-  assert.match(listed.text, /- search_issues \(read\): Search issues\.\n/);
-  assert.match(listed.text, /- create_issue \(edit\)/);
-  assert.match(listed.text, /- delete_repo \(not classified: the user is asked every time\)/);
+  assert.match(listed.text, /Read \(runs at once\):\n- search_issues: Search issues\. More detail\.\n/);
+  assert.match(listed.text, /Edit \(may ask the user\):\n- create_issue: Create an issue\./);
+  assert.match(listed.text, /Not classified \(asks the user every time\):\n- delete_repo: /);
   assert.deepEqual(fake.started, [{ transport: "stdio", command: "npx", args: GITHUB.args, env: { GITHUB_TOKEN: "t" } }]);
 
   const described = await session.list({ server: "github", tool: "search_issues" }, {});
@@ -273,6 +273,97 @@ test("through the local operations, the model's instance_id never reaches the se
   await caller.callTool(CALL_MCP_TOOL_OPERATION, { server: "github", tool: "create_issue", arguments: { a: 1 }, instance_id: "studio-1" });
   assert.deepEqual(fake.calls, [{ name: "create_issue", args: { a: 1 } }]);
   await session.close();
+});
+
+test("a server with 160 tools is listed whole, by name, and a query finds tools with what they do", async () => {
+  const many: ExternalMcpTool[] = Array.from({ length: 160 }, (_, index) => ({
+    name: index === 117 ? "text_to_sound_effects" : `agents_tool_number_${index}`,
+    description: index === 117 ? "Turn a description into a sound effect, saved as an MP3." : `Manage conversational agents, part ${index}. ${"Long detail. ".repeat(20)}`,
+    inputSchema: undefined,
+  }));
+  const fake: FakeServer = { tools: many, calls: [], closed: 0, started: [] };
+  const session = sessionFor(() => [{ server: { ...GITHUB, name: "elevenlabs", toolRisk: {} }, secrets: {} }], fake);
+  const listed = await session.list({}, {});
+  for (const tool of many) assert.ok(listed.text.includes(tool.name), `${tool.name} is listed`);
+  assert.ok(listed.text.length < 21_000, "the list fits in one result");
+  assert.match(listed.text, /Irreversible \(asks the user, except in Full auto\): agents_tool_number_0, /);
+  assert.equal(listed.text.includes("Long detail"), false, "too many to describe, so names alone");
+
+  const found = await session.list({ query: "Sound EFFECT" }, {});
+  assert.match(found.text, /elevenlabs: 1 of 160 tools match "sound effect"/);
+  assert.match(found.text, /- text_to_sound_effects: Turn a description into a sound effect/);
+  await session.close();
+});
+
+test("a download takes only a link a result gave, and saves it as the kind of file it is", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "roqer-mcp-downloads-"));
+  const fetched: string[] = [];
+  const downloadFetch = (async (url: string) => {
+    fetched.push(url);
+    if (url.includes("expired")) return new Response("gone", { status: 403 });
+    return new Response(new Uint8Array([0x49, 0x44, 0x33, 1, 2, 3]), { status: 200, headers: { "content-type": "audio/mpeg" } });
+  }) as typeof fetch;
+  const linking: FakeServer = { tools: TOOLS, calls: [], closed: 0, started: [] };
+  const session = new ExternalMcpRunSession({
+    source: { enabled: async () => [{ server: GITHUB, secrets: {} }] },
+    clientVersion: "test",
+    baseEnv: {},
+    connect: async (target) => {
+      const connection = await fakeConnect(linking)(target);
+      return {
+        ...connection,
+        get closed() { return connection.closed; },
+        toolsVersion: 0,
+        callTool: async () => ({
+          isError: false,
+          text: "Your sound is ready: https://cdn.example.com/out/sfx%20coin?sig=abc and an old one https://cdn.example.com/expired.mp3.",
+          images: [], omitted: [],
+        }),
+      };
+    },
+    downloadDirectory: directory,
+    downloadFetch,
+  });
+  try {
+    const refused = await session.download({ url: "https://cdn.example.com/out/sfx%20coin?sig=abc" }, {});
+    assert.equal(refused.errorCode, "unknown_link", "nothing is fetched before a result gives the link");
+    assert.equal(fetched.length, 0);
+
+    const result = await session.call({ server: "github", tool: "make_sound", arguments: {} }, {});
+    assert.match(result.text, /can be saved for upload with external_mcp \{action:'download', url\}/);
+
+    const saved = await session.download({ url: "https://cdn.example.com/out/sfx%20coin?sig=abc" }, {});
+    assert.equal(saved.ok, true, saved.text);
+    const filePath = (saved.data as { filePath: string }).filePath;
+    assert.ok(filePath.startsWith(directory));
+    assert.match(path.basename(filePath), /^[0-9a-f]{6}-sfx-coin\.mp3$/, "named by the link, with the extension its type calls for");
+    assert.deepEqual([...await fs.readFile(filePath)], [0x49, 0x44, 0x33, 1, 2, 3]);
+    assert.match(saved.text, /assetType:'Audio'/);
+
+    const expired = await session.download({ url: "https://cdn.example.com/expired.mp3" }, {});
+    assert.equal(expired.ok, false);
+    assert.match(expired.text, /may have expired/);
+    assert.equal(await session.download({ url: "https://elsewhere.example/secret" }, {}).then((outcome) => outcome.errorCode), "unknown_link");
+  } finally {
+    await session.close();
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("external_mcp parses a search and a download, and refuses a download that is not https", () => {
+  assert.deepEqual(parseExternalMcpToolInput({ action: "list", query: " sound effect " }), { operation: LIST_MCP_TOOLS_OPERATION, args: { query: "sound effect" } });
+  assert.deepEqual(parseExternalMcpToolInput({ action: "download", url: "https://cdn.example.com/a.mp3" }), {
+    operation: DOWNLOAD_MCP_FILE_OPERATION, args: { url: "https://cdn.example.com/a.mp3" },
+  });
+  assert.throws(() => parseExternalMcpToolInput({ action: "download", url: "http://cdn.example.com/a.mp3" }), MalformedToolCallError);
+  assert.throws(() => parseExternalMcpToolInput({ action: "download" }), MalformedToolCallError);
+});
+
+test("the tool's description fits what Claude Code keeps of one", () => {
+  assert.ok(externalMcpToolDefinition().description.length <= 2_048, `${externalMcpToolDefinition().description.length} characters`);
 });
 
 test("Settings' test lists the tools with the server's hints, and stops the server again", async () => {
