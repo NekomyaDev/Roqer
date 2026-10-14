@@ -251,22 +251,24 @@ function describeError(error: unknown): string {
 
 // -- stdio ------------------------------------------------------------------
 
+function isExistingFile(file: string): boolean {
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Where a bare command name lives on Windows, with its extension. Node will
  * not start a `.cmd` or `.bat` file without a shell, and most MCP servers are
  * started through one (`npx.cmd`), so the caller needs to know which it is.
+ * `isFile` is injectable so the lookup can be tested off Windows.
  */
-export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv): string | undefined {
+export function resolveWindowsCommand(command: string, env: NodeJS.ProcessEnv, isFile: (file: string) => boolean = isExistingFile): string | undefined {
   const extensions = (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean).map((ext) => ext.toLowerCase());
   const hasExtension = path.win32.extname(command) !== "";
   const candidates = (base: string) => hasExtension ? [base] : extensions.map((ext) => `${base}${ext}`);
-  const isFile = (file: string) => {
-    try {
-      return fs.statSync(file).isFile();
-    } catch {
-      return false;
-    }
-  };
   if (path.win32.isAbsolute(command)) return candidates(command).find(isFile);
   const directories = (env.Path ?? env.PATH ?? "").split(";").filter(Boolean);
   for (const directory of directories) {
@@ -298,9 +300,10 @@ export function launchPlan(
   args: readonly string[],
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv,
+  isFile: (file: string) => boolean = isExistingFile,
 ): { file: string; args: string[]; verbatim: boolean } {
   if (platform !== "win32") return { file: command, args: [...args], verbatim: false };
-  const resolved = resolveWindowsCommand(command, env);
+  const resolved = resolveWindowsCommand(command, env, isFile);
   if (resolved === undefined) {
     throw new ExternalMcpError("connect_failed", `Roqer could not find ${command}${path.win32.isAbsolute(command) ? "" : " on PATH"}.`);
   }

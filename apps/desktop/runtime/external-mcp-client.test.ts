@@ -254,21 +254,21 @@ test("a redirect is refused, so the user's headers never follow it", async () =>
   }, { redirect: true });
 });
 
-test("on Windows a .cmd shim is started through cmd with every argument quoted", async () => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "roqer-cmd-shim-"));
-  try {
-    await fs.writeFile(path.join(directory, "npx.cmd"), "@echo off");
-    const env = { PATH: directory, PATHEXT: ".EXE;.CMD", ComSpec: "C:\\Windows\\System32\\cmd.exe" };
-    const plan = launchPlan("npx", ["-y", "@scope/server", "C:\\dir with space\\"], "win32", env);
-    assert.equal(plan.file, env.ComSpec);
-    assert.equal(plan.verbatim, true);
-    assert.deepEqual(plan.args.slice(0, 3), ["/d", "/s", "/c"]);
-    assert.equal(plan.args[3], `""${path.join(directory, "npx.cmd")}" "-y" "@scope/server" "C:\\dir with space\\\\""`);
-    assert.throws(() => launchPlan("npx", ["%PATH%"], "win32", env), /cannot have/);
-    assert.throws(() => launchPlan("missing", [], "win32", env), /could not find missing on PATH/);
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true });
-  }
+test("on Windows a .cmd shim is started through cmd with every argument quoted", () => {
+  // A Windows file system of two files, so the lookup reads the same on any machine.
+  const files = new Set(["C:\\Program Files\\nodejs\\npx.cmd", "C:\\Tools\\server.exe"]);
+  const isFile = (file: string) => files.has(file);
+  const env = { PATH: "C:\\Windows;C:\\Program Files\\nodejs;C:\\Tools", PATHEXT: ".EXE;.CMD", ComSpec: "C:\\Windows\\System32\\cmd.exe" };
+  const plan = launchPlan("npx", ["-y", "@scope/server", "C:\\dir with space\\"], "win32", env, isFile);
+  assert.equal(plan.file, env.ComSpec);
+  assert.equal(plan.verbatim, true);
+  assert.deepEqual(plan.args.slice(0, 3), ["/d", "/s", "/c"]);
+  assert.equal(plan.args[3], "\"\"C:\\Program Files\\nodejs\\npx.cmd\" \"-y\" \"@scope/server\" \"C:\\dir with space\\\\\"\"");
+  // An .exe needs no shell, and its arguments are left for Node to quote.
+  assert.deepEqual(launchPlan("server", ["--port", "1"], "win32", env, isFile), { file: "C:\\Tools\\server.exe", args: ["--port", "1"], verbatim: false });
+  assert.throws(() => launchPlan("npx", ["%PATH%"], "win32", env, isFile), /cannot have/);
+  assert.throws(() => launchPlan("missing", [], "win32", env, isFile), /could not find missing on PATH/);
+  assert.deepEqual(launchPlan("npx", ["-y"], "linux", env, isFile), { file: "npx", args: ["-y"], verbatim: false }, "elsewhere the command runs as given");
 });
 
 test("quoting refuses what cmd would still expand", () => {
