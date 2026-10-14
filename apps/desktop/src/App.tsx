@@ -240,6 +240,8 @@ function App() {
   const [runView, setRunView] = useState<RunView | null>(null);
   /** The latest context reading per chat, for the composer's meter. Never saved; see context-usage.ts. */
   const [contextReadings, setContextReadings] = useState<ReadonlyMap<string, ContextReading>>(() => new Map());
+  /** The chat whose compact is waiting on the main process. */
+  const [compactingChatId, setCompactingChatId] = useState<string | null>(null);
   // What the last compact said, kept with its chat so it never shows on another one.
   const [compactNotice, setCompactNotice] = useState<{ chatId: string; text: string } | null>(null);
   const [runStarting, setRunStarting] = useState(false);
@@ -634,8 +636,12 @@ function App() {
   const compactedFrom = selectedChat?.compaction?.folded ?? 0;
   const compactedUsage = compactUsageNote(selectedChat?.compaction?.usedTokens, selectedChat?.compaction?.windowTokens);
   const compactTo = selectedChat === undefined ? 0 : selectedChat.messages.length - COMPACT_KEEPS_MESSAGES;
+  // Send waits while the chat on screen is being compacted: a run started
+  // between the main process dropping the provider's conversation and the
+  // record being saved would rebuild that conversation from the whole chat.
+  const compacting = compactingChatId !== null && compactingChatId === selectedChat?.id;
   // Nothing new to fold yet, or a run may be working on this chat.
-  const canCompact = !isRunning && compactTo > compactedFrom;
+  const canCompact = !isRunning && !compacting && compactTo > compactedFrom;
 
   /**
    * Fold the chat's older messages into a record the model reads in their place.
@@ -647,7 +653,14 @@ function App() {
     if (!selectedChat || !selectedProject || !canCompact) return;
     const projectId = selectedProject.id;
     const chatId = selectedChat.id;
-    if (hasDesktopRuntime() && !(await compactChatSessions(chatId))) return;
+    if (hasDesktopRuntime()) {
+      setCompactingChatId(chatId);
+      try {
+        if (!(await compactChatSessions(chatId))) return;
+      } finally {
+        setCompactingChatId(null);
+      }
+    }
     const summary = compactChatSummary(
       selectedChat.compaction?.summary ?? "",
       toConversationMessages(selectedChat.messages.slice(compactedFrom, compactTo)),
@@ -659,6 +672,14 @@ function App() {
       ? {}
       : { usedTokens: reading.usedTokens, windowTokens: reading.windowTokens };
     setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary, ...usage }));
+    // The reading described the context before the compact. The meter shows
+    // nothing rather than a figure the compact made untrue, until the next run reports.
+    setContextReadings((current) => {
+      if (!current.has(chatId)) return current;
+      const next = new Map(current);
+      next.delete(chatId);
+      return next;
+    });
     const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
     setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
   };
@@ -732,7 +753,7 @@ function App() {
   const sendPrompt = async () => {
     if (steering) { await sendSteer(); return; }
     const prompt = composedMessage(pastedBlocks, composer);
-    if (!prompt || isRunning || !hydrated || !storageAvailable || storageRecovery.required) return;
+    if (!prompt || isRunning || compacting || !hydrated || !storageAvailable || storageRecovery.required) return;
     if (prompt.length > 64_000) { setAttachmentError("Shorten the message to 64,000 characters before sending."); return; }
     const unread = attachments.find((attachment) => attachment.clip !== undefined && (attachment.clip.id === undefined || readingClips.has(attachment.id)));
     if (unread !== undefined) {
@@ -1683,7 +1704,7 @@ function App() {
                 ? pendingQuestion && composer.trim()
                   ? <button className="send-button answer-send" onClick={() => void sendSteer()}>Send as answer <ArrowUp size={16} aria-hidden="true" /></button>
                   : <button className="send-button" onClick={() => void sendSteer()} disabled={!composer.trim()} aria-label="Send note to the running task"><ArrowUp size={18} /></button>
-                : !showRunControls && <button className="send-button" onClick={() => void sendPrompt()} disabled={!hydrated || !storageAvailable || storageRecovery.required || isRunning || message === "" || (hasDesktopRuntime() && providerStatus.kind === "signed-in" && !selectedModel)} aria-label="Send message"><ArrowUp size={18} /></button>}
+                : !showRunControls && <button className="send-button" onClick={() => void sendPrompt()} disabled={!hydrated || !storageAvailable || storageRecovery.required || isRunning || compacting || message === "" || (hasDesktopRuntime() && providerStatus.kind === "signed-in" && !selectedModel)} aria-label="Send message"><ArrowUp size={18} /></button>}
             </div>
           </div>
         </div>

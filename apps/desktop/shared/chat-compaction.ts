@@ -62,9 +62,13 @@ function linesFor(message: ConversationMessage): string[] {
  *
  * When the record outgrows its bound, the oldest lines go and the notice says so.
  * The newest work is what a continuing chat most needs, so it is the part kept.
+ * A record that lost lines in an earlier fold keeps its notice: those lines do
+ * not come back.
  */
 export function compactChatSummary(previous: string, messages: readonly ConversationMessage[]): string {
-  const earlier = previous.split("\n").filter((line) => line !== "" && line !== COMPACT_DROPPED_NOTICE);
+  const previousLines = previous.split("\n");
+  const droppedBefore = previousLines.includes(COMPACT_DROPPED_NOTICE);
+  const earlier = previousLines.filter((line) => line !== "" && line !== COMPACT_DROPPED_NOTICE);
   const all = [...earlier, ...messages.flatMap(linesFor)];
 
   const budget = MAX_COMPACT_SUMMARY_CHARS - COMPACT_DROPPED_NOTICE.length - 1;
@@ -77,5 +81,5 @@ export function compactChatSummary(previous: string, messages: readonly Conversa
     size += cost;
   }
 
-  return kept.length < all.length ? [COMPACT_DROPPED_NOTICE, ...kept].join("\n") : kept.join("\n");
+  return droppedBefore || kept.length < all.length ? [COMPACT_DROPPED_NOTICE, ...kept].join("\n") : kept.join("\n");
 }
