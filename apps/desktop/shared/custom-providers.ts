@@ -206,7 +206,8 @@ export function isCustomApiFormat(value: unknown): value is CustomApiFormat {
   return CUSTOM_API_FORMATS.includes(value as CustomApiFormat);
 }
 
-function isLoopbackOrPrivateHost(hostname: string): boolean {
+/** This computer or the private network: the only hosts plain HTTP may reach. */
+export function isLoopbackOrPrivateHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === "localhost" || host === "[::1]" || host.endsWith(".local")) return true;
   const octets = host.split(".");

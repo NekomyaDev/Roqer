@@ -928,11 +928,21 @@ details.task-list[open] .task-list-caret { transform: rotate(90deg); }
 .settings-savebar > p { flex: 1; min-width: 0; margin: 0; }
 .settings-savebar-note { color: var(--ink-secondary); font-size: var(--type-label); }
 .settings-savebar button:disabled { cursor: default; opacity: .45; }
+/* An MCP server's page: arguments one per line, a field's hint under its
+   input, a saved secret by name only, and a tool as its name, what the server
+   says it does (third-party text, so clamped) and the risk the user gives it. */
+.settings-field textarea { width: 100%; min-height: 64px; padding: 7px 10px; box-sizing: border-box; color: var(--ink); background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 8px; outline: 0; resize: vertical; font: var(--weight-regular) 12px/1.5 "Geist Mono Variable", monospace; }
+.settings-field textarea:focus { background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.settings-field > .custom-hint { grid-column: 2; color: var(--muted); font-size: var(--type-meta); }
+.settings-field > .mcp-secret-name { overflow: hidden; color: var(--ink-secondary); font: var(--weight-regular) 12px/1.4 "Geist Mono Variable", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.settings-row-text > .mcp-tool-name { overflow: hidden; font: var(--weight-medium) 12px/1.4 "Geist Mono Variable", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.settings-row-text > .mcp-tool-description { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.mcp-risk { height: 30px; padding: 0 8px; color: var(--ink); background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 7px; font-size: var(--type-meta); }
 @media (max-width: 900px) {
   .settings-nav { flex-basis: 180px; }
   .settings-content { padding: 32px 28px 48px; }
   .settings-list > .settings-field { grid-template-columns: minmax(0, 1fr); }
-  .settings-field > .custom-message { grid-column: 1; }
+  .settings-field > .custom-message, .settings-field > .custom-hint { grid-column: 1; }
 }
 .settings-switch { position: relative; flex: none; width: 36px; height: 20px; padding: 0; background: var(--border-strong); border: 0; border-radius: 99px; transition: background .15s ease; }
 .settings-switch::after { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgb(0 0 0 / .25); content: ""; transition: transform .15s ease; }

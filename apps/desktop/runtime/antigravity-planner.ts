@@ -66,6 +66,8 @@ export type AntigravityPlannerOptions = {
   blender?: boolean;
   /** Offer `reference_clip`: only in a chat holding a clip the user attached. */
   referenceClips?: boolean;
+  /** Offer `external_mcp`: only while the user has at least one MCP server turned on. */
+  externalMcp?: boolean;
   /** Where private homes are made. Injectable for tests; defaults to the system temp directory. */
   homeParent?: string;
 };
@@ -412,6 +414,7 @@ function sessionKey(options: AntigravityPlannerOptions, { autoPlaytest, instance
   return JSON.stringify([
     instanceId, options.model, autoPlaytest,
     options.agent.id, options.agent.version, options.blender === true, options.referenceClips === true,
+    options.externalMcp === true,
   ]);
 }
 

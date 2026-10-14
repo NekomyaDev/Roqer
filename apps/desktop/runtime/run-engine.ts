@@ -16,7 +16,8 @@
 import { createHash } from "node:crypto";
 import type { McpToolCaller, McpToolImage, McpToolOutcome } from "./mcp-types";
 import { decideToolPolicy, describePolicyReason } from "../shared/policy";
-import type { PolicyReason } from "../shared/policy";
+import type { PolicyReason, ToolRisk } from "../shared/policy";
+import { CALL_MCP_TOOL_OPERATION } from "../shared/mcp-servers";
 import { isClassifiedTool, riskForTool, summarizeToolCall, timeoutForTool } from "../shared/mcp-tools";
 import type {
   RunChange,
@@ -231,6 +232,13 @@ export type RunEngineOptions = {
    * back, is rated irreversible. Absent means no link is known of.
    */
   rojoLinked?: (instanceId: string | null) => boolean;
+  /**
+   * The risk the user set for a tool on one of their MCP servers, read at the
+   * moment of the call, or undefined when it has none. Undefined leaves the
+   * call unclassified: irreversible, and asked even in Full auto. Absent
+   * means no call to such a tool is classified.
+   */
+  mcpToolRisk?: (server: string, tool: string) => ToolRisk | undefined;
 };
 
 const RETRYABLE_ERROR_CODES: ReadonlySet<string> = new Set(["timeout", "request_failed", "bridge_restarted"]);
@@ -362,6 +370,7 @@ export class RunSession {
   private readonly now: () => string;
   private readonly createId: (prefix: string) => string;
   private readonly rojoLinked: RunEngineOptions["rojoLinked"];
+  private readonly mcpToolRisk: RunEngineOptions["mcpToolRisk"];
 
   private readonly abortController = new AbortController();
   private readonly outputMeter = new OutputTokenMeter();
@@ -425,6 +434,7 @@ export class RunSession {
     this.now = options.now ?? (() => new Date().toISOString());
     this.createId = options.createId ?? defaultIdGenerator();
     this.rojoLinked = options.rojoLinked;
+    this.mcpToolRisk = options.mcpToolRisk;
     this.runId = options.request.runId;
   }
 
@@ -751,6 +761,11 @@ export class RunSession {
     return args.instance_id === instanceId ? args : { ...args, instance_id: instanceId };
   }
 
+  private userMcpToolRisk(args: Record<string, unknown>): ToolRisk | undefined {
+    if (typeof args.server !== "string" || typeof args.tool !== "string") return undefined;
+    return this.mcpToolRisk?.(args.server, args.tool);
+  }
+
   private async callTool(tool: string, args: Record<string, unknown>): Promise<McpToolOutcome> {
     if (this.cancelled) {
       throw new RunCancelledError();
@@ -761,7 +776,12 @@ export class RunSession {
     const callId = this.createId("call");
     // The place the call is addressed to; a run with none lets the server pick one, which may be linked.
     const addressed = this.request.instanceId ?? (typeof effectiveArgs.instance_id === "string" ? effectiveArgs.instance_id : null);
-    const risk = riskForTool(tool, effectiveArgs, { rojoLinked: this.rojoLinked?.(addressed) === true });
+    // A tool on one of the user's MCP servers carries the risk they set for it,
+    // which no table here can know; one they have not classified is treated
+    // as irreversible and, below, as unclassified.
+    const userRisk = tool === CALL_MCP_TOOL_OPERATION ? this.userMcpToolRisk(effectiveArgs) : undefined;
+    const classified = tool === CALL_MCP_TOOL_OPERATION ? userRisk !== undefined : isClassifiedTool(tool);
+    const risk = userRisk ?? riskForTool(tool, effectiveArgs, { rojoLinked: this.rojoLinked?.(addressed) === true });
     const proposal: ToolProposal = {
       callId,
       tool,
@@ -799,7 +819,7 @@ export class RunSession {
     // `Full auto` waives confirmation for the actions Roqer has classified.
     // A tool missing from the risk table has no classification to waive, so it
     // falls back to asking rather than running unattended on a guess.
-    const mode = this.request.approvalMode === "Full auto" && !isClassifiedTool(tool)
+    const mode = this.request.approvalMode === "Full auto" && !classified
       ? "Ask first"
       : this.request.approvalMode;
     const decision = decideToolPolicy(mode, risk);

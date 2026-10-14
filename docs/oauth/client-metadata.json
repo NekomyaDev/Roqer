@@ -1,0 +1,12 @@
+{
+  "client_id": "https://s4us.github.io/Roqer/oauth/client-metadata.json",
+  "client_name": "Roqer",
+  "client_uri": "https://github.com/S4US/Roqer",
+  "redirect_uris": [
+    "http://127.0.0.1:47823/callback",
+    "http://127.0.0.1/callback"
+  ],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
