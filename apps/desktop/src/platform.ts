@@ -207,6 +207,16 @@ export async function loadEvidencePicture(ref: string): Promise<EvidencePictureR
   return window.workbenchDesktop?.previews.loadPicture(ref) ?? { ok: false, reason: "refused" };
 }
 
+/**
+ * Compact a chat's saved Claude conversation with Claude's own summary.
+ * `noSession` when the chat has none, so the caller compacts it another way.
+ */
+export async function compactChat(projectId: string, chatId: string): Promise<{ ok: boolean; message: string; noSession?: true }> {
+  const bridge = window.workbenchDesktop?.chats;
+  if (!bridge) return { ok: false, message: "Compacting needs the desktop app.", noSession: true };
+  return bridge.compactModel(projectId, chatId);
+}
+
 export async function getProviderStatus(provider: ProviderId): Promise<ProviderStatus> {
   const bridge = connector(provider);
   if (!bridge) return { kind: "unavailable", message: `${providerLabel(provider)} needs the desktop app.` };

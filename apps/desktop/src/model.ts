@@ -49,6 +49,8 @@ export type ChatMessage = {
   attachments?: AssetAttachment[];
   /** Compacted record of the agent run that produced this message. */
   run?: RunRecord;
+  /** A note the user sent while a run was working, rather than a prompt that started one. */
+  note?: true;
 };
 
 export type Chat = {
@@ -246,7 +248,8 @@ function isMessage(value: unknown): value is ChatMessage {
     typeof value.text === "string" &&
     typeof value.createdAt === "string" &&
     (value.attachments === undefined || (Array.isArray(value.attachments) && value.attachments.every(isAttachment))) &&
-    (value.run === undefined || isRunRecord(value.run));
+    (value.run === undefined || isRunRecord(value.run)) &&
+    (value.note === undefined || (value.note === true && value.role === "user"));
 }
 
 /**
@@ -644,6 +647,34 @@ export function setChatCompaction(state: WorkspaceState, projectId: string, chat
         ...project,
         chats: project.chats.map((chat) => (chat.id === chatId ? { ...chat, compaction } : chat)),
       };
+    }),
+  };
+}
+
+/**
+ * The chat's last `count` notes, which the run ended before the model read,
+ * become ordinary messages again: the next run is told them as messages it
+ * missed instead of taking them as already received.
+ */
+export function undeliverNotes(state: WorkspaceState, projectId: string, chatId: string, count: number): WorkspaceState {
+  if (count <= 0) return state;
+  return {
+    ...state,
+    projects: state.projects.map((project) => project.id !== projectId ? project : {
+      ...project,
+      chats: project.chats.map((chat) => {
+        if (chat.id !== chatId) return chat;
+        let left = count;
+        const messages = [...chat.messages];
+        for (let index = messages.length - 1; index >= 0 && left > 0; index -= 1) {
+          if (messages[index].note !== true) continue;
+          const plain = { ...messages[index] };
+          delete plain.note;
+          messages[index] = plain;
+          left -= 1;
+        }
+        return { ...chat, messages };
+      }),
     }),
   };
 }

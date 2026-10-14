@@ -65,7 +65,8 @@ import {
 } from "../runtime/client-installer";
 import { ClientVersionReader } from "../runtime/client-version";
 import { resolveCodexExecutable } from "../runtime/codex-executable";
-import { createClaudePlanner, type ClaudeSession } from "../runtime/claude-planner";
+import { compactClaudeChat, createClaudePlanner, type ClaudeSession } from "../runtime/claude-planner";
+import { ClaudeSessionRegistry } from "../runtime/claude-session-registry";
 import { AntigravityClient, ANTIGRAVITY_SIGN_IN_HOSTS } from "../runtime/antigravity-cli";
 import { resolveAntigravityExecutable } from "../runtime/antigravity-executable";
 import { AntigravityLimitsTracker } from "../runtime/antigravity-limits";
@@ -694,6 +695,13 @@ function startMcpServer(): void {
 // -- Local Blender worker --------------------------------------------------
 
 let blenderSettingsStore: BlenderSettings | null = null;
+let claudeSessionRegistryStore: ClaudeSessionRegistry | null = null;
+
+/** Which saved Claude Code session holds each chat's conversation. */
+function claudeSessionRegistry(): ClaudeSessionRegistry {
+  claudeSessionRegistryStore ??= new ClaudeSessionRegistry(path.join(app.getPath("userData"), "claude-sessions.json"));
+  return claudeSessionRegistryStore;
+}
 
 /** Whether the Blender worker is on, and which Blender it runs. */
 function blenderSettings(): BlenderSettings {
@@ -1449,6 +1457,74 @@ async function submitProviderCode(event: IpcMainInvokeEvent, payload: unknown): 
   }
 }
 
+
+// -- Conversation compaction -------------------------------------------------
+
+/** Chats being compacted, so a second click does not start another and a run waits for it. */
+const compactingChats = new Map<string, Promise<unknown>>();
+/** Stops every compaction in progress when Roqer quits, so none outlives it. */
+const compactionStop = new AbortController();
+
+/**
+ * Compact a chat's saved Claude conversation with Claude Code's own `/compact`:
+ * Claude writes the summary the session keeps. `noSession` says the chat has no
+ * saved Claude conversation, so the window compacts it with its own record instead.
+ */
+async function compactChat(event: IpcMainInvokeEvent, payload: unknown): Promise<ModelCompaction> {
+  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not compact a chat." };
+  if (!isRecord(payload) || typeof payload.chatId !== "string" || typeof payload.projectId !== "string") {
+    return { ok: false, message: "Choose a chat to compact." };
+  }
+  const { chatId } = payload;
+  if (runHolds.chatBusy(chatId)) return { ok: false, message: "Wait for the run in this chat to finish, then compact." };
+  if (compactingChats.has(chatId)) return { ok: false, message: "This chat is already being compacted." };
+  const compaction = compactChatNow(chatId);
+  compactingChats.set(chatId, compaction);
+  try {
+    return await compaction;
+  } finally {
+    compactingChats.delete(chatId);
+  }
+}
+
+type ModelCompaction = { ok: boolean; message: string; noSession?: true };
+
+async function compactChatNow(chatId: string): Promise<ModelCompaction> {
+  try {
+    const saved = await claudeSessionRegistry().get(chatId);
+    if (saved === undefined) return { ok: false, message: "This chat has no saved Claude conversation.", noSession: true };
+    const agentRuntime = await clientAgentRuntime();
+    const client = claudeProvider();
+    const model = saved.model ?? "opus";
+    const result = await compactClaudeChat({
+      launcher: client,
+      getStatus: () => client.getStatus(),
+      cwd: app.getPath("userData"),
+      model,
+      effort: "medium",
+      supportsEffort: false,
+      agent: agentRuntime.definition,
+      skillLibrary: agentRuntime.skillLibrary,
+      chatId,
+      sessions: claudeSessions,
+      registry: claudeSessionRegistry(),
+      signal: compactionStop.signal,
+    });
+    if (!result.ok) return result;
+    const tokens = (count: number | null) => count === null ? null : `${Math.round(count / 1000).toLocaleString("en-US")}k`;
+    const before = tokens(result.preTokens);
+    const after = tokens(result.postTokens);
+    return {
+      ok: true,
+      message: before !== null && after !== null
+        ? `Compacted this chat's conversation from about ${before} to ${after} tokens. Claude keeps a summary of everything before.`
+        : "Compacted this chat's conversation. Claude keeps a summary of everything before.",
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "The conversation could not be compacted." };
+  }
+}
+
 // -- Custom model connections ------------------------------------------------
 //
 // Configuration only: none of these runs anything in Studio. A run on a custom
@@ -1611,6 +1687,7 @@ function plannerFor(
       skillLibrary: agentRuntime.skillLibrary,
       chatId: request.chatId,
       sessions: claudeSessions,
+      registry: claudeSessionRegistry(),
       blender,
       referenceClips,
     });
@@ -1862,6 +1939,13 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
     await initializeStorage();
     if (cancelled()) return stopped;
     if (store().status().required) return { ok: false, message: "Recover your saved chats before starting a run." };
+    // A run reopens the chat's conversation, which compaction is rewriting.
+    // The run's hold already keeps a new compaction out; one that began
+    // before it is waited for.
+    for (let compaction = compactingChats.get(request.chatId); compaction !== undefined; compaction = compactingChats.get(request.chatId)) {
+      await compaction.catch(() => undefined);
+    }
+    if (cancelled()) return stopped;
     // The vendor sign-in and the model catalog are independent reads that can
     // each wait on a provider process, so they run together. Their answers
     // are still taken in this order. The smoke run is driven by its own local
@@ -2068,17 +2152,20 @@ async function startRun(event: IpcMainInvokeEvent, payload: unknown): Promise<Ru
 }
 
 /**
- * Forget the provider conversations a chat keeps, after the user compacts it.
+ * Forget the provider conversations a chat keeps, after the user compacts it
+ * with the window's own record.
  *
  * The next run then starts from the compacted transcript instead of a provider
  * that still holds everything. Refused while a run is starting or working on
  * the chat: that run owns the conversation until it ends, and would put the
  * full history back.
  */
-function compactChatSessions(event: IpcMainInvokeEvent, chatId: unknown): boolean {
+async function compactChatSessions(event: IpcMainInvokeEvent, chatId: unknown): Promise<boolean> {
   if (!isTrusted(event.sender) || typeof chatId !== "string" || chatId === "" || chatId.length > 1_000) return false;
-  if (runHolds.chatBusy(chatId)) return false;
+  if (runHolds.chatBusy(chatId) || compactingChats.has(chatId)) return false;
   claudeSessions.drop(chatId);
+  // A saved Claude conversation would be resumed with everything in it.
+  await claudeSessionRegistry().forget(chatId);
   antigravitySessions.drop(chatId);
   codexThreads.drop(chatId);
   customConversations.drop(chatId);
@@ -2558,6 +2645,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("rojo:open-folder", openRojoFolder);
   ipcMain.handle("previews:model", loadModelPreview);
   ipcMain.handle("previews:picture", loadEvidencePicture);
+  ipcMain.handle("chat:compact-model", compactChat);
   ipcMain.handle("run:start", startRun);
   ipcMain.handle("chat:compact", compactChatSessions);
   ipcMain.handle("run:respond", respondToRun);
@@ -2616,6 +2704,7 @@ app.on("before-quit", () => {
   void clipDecoder.close(true);
   clientInstalls.stop();
   void claudeSessions.closeAll();
+  compactionStop.abort();
   void antigravitySessions.closeAll();
   void codexThreads.closeAll();
   void customConversations.closeAll();
