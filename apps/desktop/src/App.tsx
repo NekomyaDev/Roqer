@@ -140,6 +140,31 @@ const MAX_IMAGES_PER_MESSAGE = 4;
 const isImageAttachment = (attachment: AssetAttachment): boolean =>
   attachment.mediaType !== undefined && ATTACHABLE_IMAGE_TYPES.has(attachment.mediaType);
 
+/**
+ * One chat's run as the window tracks it. A chat has at most one run at a time,
+ * and several chats may run at once: the main process refuses a second run in
+ * the same chat or on the same Studio place, and everything else is per chat.
+ */
+type ChatRun = {
+  projectId: string;
+  chatId: string;
+  /** The main process's id for the run; null until the start answers. */
+  runId: string | null;
+  /** The start's id while the main process is still starting the run. */
+  startId: string | null;
+  /** Which start this is, so an answer for a run the person has since abandoned is ignored. */
+  attempt: number;
+  view: RunView | null;
+  /** The browser-only demo run that stands in for the main process when there is no desktop runtime. */
+  demo: DemoRunHandle | null;
+  /** The chat, provider and model the run's context readings describe. */
+  contextTarget: { chatId: string; provider: ProviderId; model: string | null };
+};
+
+/** Whether a run is stopped on the person: a question or an approval waits for them. */
+const runNeedsInputOf = (run: ChatRun): boolean =>
+  run.view !== null && run.view.outcome === null && (run.view.pendingQuestion !== null || run.view.pendingApproval !== null);
+
 /** A manual compact keeps the last exchange word for word, so the next run starts from what was just said. */
 const COMPACT_KEEPS_MESSAGES = 2;
 
@@ -237,14 +262,14 @@ function App() {
   const [trimmingClip, setTrimmingClip] = useState<string | null>(null);
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
-  const [runView, setRunView] = useState<RunView | null>(null);
+  /** Every chat's run, keyed by chat. See `runsRef` for why the latest copy is also kept in a ref. */
+  const [runs, setRunsState] = useState<ReadonlyMap<string, ChatRun>>(() => new Map());
   /** The latest context reading per chat, for the composer's meter. Never saved; see context-usage.ts. */
   const [contextReadings, setContextReadings] = useState<ReadonlyMap<string, ContextReading>>(() => new Map());
   /** The chat whose compact is waiting on the main process. */
   const [compactingChatId, setCompactingChatId] = useState<string | null>(null);
   // What the last compact said, kept with its chat so it never shows on another one.
   const [compactNotice, setCompactNotice] = useState<{ chatId: string; text: string } | null>(null);
-  const [runStarting, setRunStarting] = useState(false);
   /** The callId of a pending question being answered in the composer, if any. */
   const [explainingQuestion, setExplainingQuestion] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -297,22 +322,23 @@ function App() {
   const [providerStatus, setProviderStatus] = useState<ProviderStatus>({ kind: "checking", message: "Checking provider" });
   const [modelCatalog, setModelCatalog] = useState<ProviderModelCatalog>({ models: [], defaultModelId: null });
   const saveRevision = useRef(0);
-  // The run id is only known once the main process answers, but events can
-  // arrive before that, so anything early is buffered and drained on adoption.
-  const activeRunId = useRef<string | null>(null);
+  // The async paths -- a start answering, an event arriving -- read the runs
+  // through this ref, never through a render's copy, which may be stale. It is
+  // always the map last committed, and every write goes through `setRuns`.
+  const runsRef = useRef<ReadonlyMap<string, ChatRun>>(new Map());
+  const setRuns = useCallback((next: ReadonlyMap<string, ChatRun>) => {
+    runsRef.current = next;
+    setRunsState(next);
+  }, []);
+  // A run's id is only known once the main process answers, but its events can
+  // arrive before that. While any start is pending they are held here, and each
+  // is drained onto its run when the id is adopted.
   const eventBuffer = useRef<RunEvent[]>([]);
-  const demoHandle = useRef<DemoRunHandle | null>(null);
-  const runTarget = useRef<{ projectId: string; chatId: string } | null>(null);
-  /**
-   * The chat, provider and model of the latest run, which its context
-   * readings describe. Unlike `runTarget` it outlives the run, so a reading
-   * that arrives with the run's end is still filed under the right chat.
-   */
-  const contextTarget = useRef<{ chatId: string; provider: ProviderId; model: string | null } | null>(null);
-  const recordedRunId = useRef<string | null>(null);
+  const startsPending = useRef(0);
   const runAttempt = useRef(0);
-  const pendingStartAttempt = useRef<number | null>(null);
-  const pendingStartId = useRef<string | null>(null);
+  // The finished runs already written into their chats, so a replayed effect
+  // (StrictMode runs effects twice in development) cannot record one twice.
+  const recordedRuns = useRef(new Set<string>());
   const latestWorkspace = useRef(workspace);
   latestWorkspace.current = workspace;
   /** Whether the box holds nothing typed or pasted, as of the latest render. */
@@ -328,25 +354,54 @@ function App() {
     [selectedProject, workspace.selectedChatId],
   );
 
-  /** Abandon a run, used when its target is deleted or the renderer unmounts. */
-  const resetRun = useCallback((discard = false) => {
-    runAttempt.current += 1;
-    pendingStartAttempt.current = null;
-    if (pendingStartId.current) void cancelRunStart(pendingStartId.current);
-    pendingStartId.current = null;
-    if (demoHandle.current) {
-      demoHandle.current.cancel();
-      demoHandle.current = null;
-    } else if (activeRunId.current) {
-      void cancelRun(activeRunId.current, discard);
+  /**
+   * Abandon a chat's run, used when the chat or its project is deleted. With no
+   * chat given, every run is abandoned, which is what unmounting does.
+   */
+  const resetRun = useCallback((chatId?: string, discard = false) => {
+    const doomed = chatId === undefined
+      ? [...runsRef.current.values()]
+      : [runsRef.current.get(chatId)].filter((run): run is ChatRun => run !== undefined);
+    if (doomed.length === 0) return;
+    for (const run of doomed) {
+      if (run.startId !== null) void cancelRunStart(run.startId);
+      if (run.demo !== null) run.demo.cancel();
+      else if (run.runId !== null) void cancelRun(run.runId, discard);
     }
-    activeRunId.current = null;
-    eventBuffer.current = [];
-    runTarget.current = null;
-    recordedRunId.current = null;
-    setRunView(null);
-    setRunStarting(false);
-  }, []);
+    const next = new Map(runsRef.current);
+    for (const run of doomed) next.delete(run.chatId);
+    setRuns(next);
+  }, [setRuns]);
+
+  /** Whether a run id belongs to a run the window is tracking. */
+  const runIsKnown = useCallback((runId: string) => [...runsRef.current.values()].some((run) => run.runId === runId), []);
+
+  /**
+   * Apply events to the runs they belong to, in order. An event for a run the
+   * window is not tracking takes nowhere. A context reading the run reports
+   * becomes its chat's latest, for the meter, as it arrives.
+   */
+  const applyRunEvents = useCallback((events: readonly RunEvent[]) => {
+    let next = runsRef.current;
+    const readings: Array<{ chatId: string; reading: ContextReading }> = [];
+    for (const event of events) {
+      const run = [...next.values()].find((candidate) => candidate.runId === event.runId);
+      if (run === undefined || run.view === null) continue;
+      const view = applyRunEvent(run.view, event);
+      if (view === run.view) continue;
+      if (view.contextUsage !== null && view.contextUsage !== run.view.contextUsage) {
+        readings.push({
+          chatId: run.chatId,
+          reading: { ...run.contextTarget, ...view.contextUsage, observedAt: Date.now() },
+        });
+      }
+      next = new Map(next).set(run.chatId, { ...run, view });
+    }
+    if (next !== runsRef.current) setRuns(next);
+    for (const { chatId, reading } of readings) {
+      setContextReadings((current) => new Map(current).set(chatId, nextContextReading(current.get(chatId), reading)));
+    }
+  }, [setRuns]);
 
   // Subscribing once at mount means no event can be missed between starting a
   // run and learning its id.
@@ -362,25 +417,16 @@ function App() {
     let scheduled: ReturnType<typeof setTimeout> | null = null;
     const flush = () => {
       scheduled = null;
-      const batch = pending.splice(0);
-      setRunView((current) => {
-        if (!current) return current;
-        let view = current;
-        for (const event of batch) {
-          if (event.runId === view.runId) view = applyRunEvent(view, event);
-        }
-        return view;
-      });
+      applyRunEvents(pending.splice(0));
     };
     const unsubscribe = subscribeToRuns((event) => {
       // A picture arrives with its ref; kept under it, the saved run shows it
       // at once when it replaces the live one, instead of asking for it again.
       if (event.type === "evidence") rememberEvidencePicture(event.evidence);
-      if (activeRunId.current === null) {
-        if (pendingStartAttempt.current !== null) eventBuffer.current.push(event);
+      if (!runIsKnown(event.runId)) {
+        if (startsPending.current > 0) eventBuffer.current.push(event);
         return;
       }
-      if (event.runId !== activeRunId.current) return;
       pending.push(event);
       scheduled ??= setTimeout(flush, 16);
     });
@@ -388,7 +434,7 @@ function App() {
       unsubscribe();
       if (scheduled !== null) clearTimeout(scheduled);
     };
-  }, []);
+  }, [applyRunEvents, runIsKnown]);
 
   useEffect(() => {
     let cancelled = false;
@@ -594,43 +640,41 @@ function App() {
     });
   }, [hydrated, modelCatalog]);
 
-  // Each reading the run reports becomes its chat's latest, for the meter.
-  const reportedContext = runView?.contextUsage ?? null;
-  useEffect(() => {
-    const target = contextTarget.current;
-    if (reportedContext === null || target === null) return;
-    const reading: ContextReading = { ...target, ...reportedContext, observedAt: Date.now() };
-    setContextReadings((current) => new Map(current).set(target.chatId, nextContextReading(current.get(target.chatId), reading)));
-  }, [reportedContext]);
-
   // A finished run becomes one assistant message carrying a compacted record,
   // so the result survives a restart without keeping the whole event stream.
+  // The run leaves the map in the same commit that records it. Retiring the
+  // live view on a timer instead left both on screen together, and the reply
+  // appeared to arrive twice.
   useEffect(() => {
-    if (!runView || runView.outcome === null) return;
-    if (recordedRunId.current === runView.runId) return;
-    recordedRunId.current = runView.runId;
-
-    const target = runTarget.current;
-    if (target) {
-      setWorkspace((current) => appendMessage(current, target.projectId, target.chatId, {
+    // Only a run still in the map can be recorded again, so the rest are let go.
+    const tracked = new Set([...runs.values()].map((run) => run.view?.runId));
+    for (const runId of recordedRuns.current) if (!tracked.has(runId)) recordedRuns.current.delete(runId);
+    const finished = [...runs.values()].filter((run) => run.view !== null && run.view.outcome !== null && !recordedRuns.current.has(run.view.runId));
+    if (finished.length === 0) return;
+    for (const run of finished) {
+      const view = run.view!;
+      recordedRuns.current.add(view.runId);
+      setWorkspace((current) => appendMessage(current, run.projectId, run.chatId, {
         id: createId("message"),
         role: "assistant",
-        text: runView.text.trim() || runView.summary,
+        text: view.text.trim() || view.summary,
         createdAt: new Date().toISOString(),
-        run: toRunRecord(runView) ?? undefined,
+        run: toRunRecord(view) ?? undefined,
       }));
     }
+    const next = new Map(runsRef.current);
+    for (const run of finished) {
+      // A run replaced in its chat since this render keeps its place.
+      if (next.get(run.chatId)?.view?.runId === run.view?.runId) next.delete(run.chatId);
+    }
+    setRuns(next);
+  }, [runs, setRuns]);
 
-    // The live view and the recorded message say the same thing, so the handoff
-    // has to happen in one commit. Retiring the live view on a timer instead
-    // left both on screen together, and the reply appeared to arrive twice.
-    setRunView(null);
-    activeRunId.current = null;
-    demoHandle.current = null;
-    pendingStartAttempt.current = null;
-    runTarget.current = null;
-  }, [runView]);
-
+  // The chat on screen is the one whose run the composer, the live view, and
+  // the stop control follow. Other chats keep their runs going in the background.
+  const selectedRun = selectedChat === undefined ? null : runs.get(selectedChat.id) ?? null;
+  const runView = selectedRun?.view ?? null;
+  const runStarting = selectedRun !== null && selectedRun.runId === null;
   const isRunning = runStarting || (runView !== null && runView.outcome === null);
 
   const compactedFrom = selectedChat?.compaction?.folded ?? 0;
@@ -683,25 +727,9 @@ function App() {
     const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
     setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
   };
-  const runBelongsToSelectedChat = runTarget.current?.projectId === workspace.selectedProjectId &&
-    runTarget.current?.chatId === workspace.selectedChatId;
-  const showRunControls = runBelongsToSelectedChat && (runStarting || runView !== null);
-  /**
-   * The one run, as seen from anywhere else in the interface. There is a single
-   * run at a time and the composer is disabled everywhere while it works, so a
-   * chat that is not the one it is in has to be able to say where it is, whether
-   * it is waiting on the person, and offer a way there.
-   */
-  const runNeedsInput = runView !== null && runView.outcome === null &&
-    (runView.pendingQuestion !== null || runView.pendingApproval !== null);
-  const runLocation = runTarget.current;
-  const runChat = isRunning && runLocation !== null
-    ? workspace.projects.find((project) => project.id === runLocation.projectId)?.chats
-      .find((chat) => chat.id === runLocation.chatId) ?? null
-    : null;
-  const runElsewhere = isRunning && !runBelongsToSelectedChat;
+  const showRunControls = runStarting || runView !== null;
   /** The composer addresses the running agent rather than starting a run. */
-  const steering = isRunning && runBelongsToSelectedChat && !runStarting;
+  const steering = isRunning && !runStarting;
   /**
    * The pending question the person chose to answer in their own words. The
    * question stays pending -- the run stays paused -- until the note is sent,
@@ -729,11 +757,11 @@ function App() {
     const text = composer.trim();
     if (!text || !steering) return;
     if (text.length > MAX_STEER_CHARS) { setAttachmentError(`Shorten the note to ${MAX_STEER_CHARS.toLocaleString()} characters.`); return; }
-    const target = runTarget.current;
-    if (!target) return;
-    const accepted = demoHandle.current
-      ? demoHandle.current.steer(text)
-      : activeRunId.current !== null && await steerRun(activeRunId.current, text);
+    if (!selectedRun) return;
+    const target = { projectId: selectedRun.projectId, chatId: selectedRun.chatId };
+    const accepted = selectedRun.demo
+      ? selectedRun.demo.steer(text)
+      : selectedRun.runId !== null && await steerRun(selectedRun.runId, text);
     if (!accepted) {
       setAttachmentError("Roqer had already finished. Send it as a new message.");
       return;
@@ -745,8 +773,8 @@ function App() {
     const pending = runView?.pendingQuestion;
     if (pending) {
       setExplainingQuestion(null);
-      if (demoHandle.current) demoHandle.current.answer(pending.callId, pending.options.length);
-      else if (activeRunId.current !== null) void answerRunQuestion(activeRunId.current, pending.callId, pending.options.length);
+      if (selectedRun.demo) selectedRun.demo.answer(pending.callId, pending.options.length);
+      else if (selectedRun.runId !== null) void answerRunQuestion(selectedRun.runId, pending.callId, pending.options.length);
     }
   };
 
@@ -813,27 +841,27 @@ function App() {
         ? next.preferences.reasoningEffort
         : availableModel?.defaultReasoningEffort ?? "medium",
     };
-    runTarget.current = { projectId, chatId };
-    contextTarget.current = { chatId, provider: request.provider, model: request.model };
     const attempt = ++runAttempt.current;
-    pendingStartAttempt.current = attempt;
-    pendingStartId.current = request.startId!;
-    recordedRunId.current = null;
-    eventBuffer.current = [];
-    activeRunId.current = null;
-    setRunStarting(true);
+    const contextTarget = { chatId, provider: request.provider, model: request.model };
+    const startId = request.startId!;
+    // The chat's run is recorded before anything else happens, so the composer
+    // and the sidebar show it at once, and so a later answer can tell it apart.
+    const commit = (run: ChatRun) => setRuns(new Map(runsRef.current).set(chatId, run));
+    const liveRun = (): ChatRun | undefined => runsRef.current.get(chatId);
+    const forget = () => {
+      const next = new Map(runsRef.current);
+      next.delete(chatId);
+      setRuns(next);
+    };
+    commit({ projectId, chatId, runId: null, startId, attempt, view: null, demo: null, contextTarget });
     setCompactNotice(null);
 
     if (!hasDesktopRuntime()) {
       const runId = createId("demo-run");
-      activeRunId.current = runId;
-      pendingStartAttempt.current = null;
-      pendingStartId.current = null;
-      setRunView(createRunView(runId, prompt, request.approvalMode));
-      setRunStarting(false);
-      demoHandle.current = startDemoRun(runId, request, (event) => {
-        setRunView((current) => (current && current.runId === event.runId ? applyRunEvent(current, event) : current));
-      });
+      commit({ projectId, chatId, runId, startId: null, attempt, view: createRunView(runId, prompt, request.approvalMode), demo: null, contextTarget });
+      const demo = startDemoRun(runId, request, (event) => applyRunEvents([event]));
+      const live = liveRun();
+      if (live?.runId === runId) commit({ ...live, demo });
       return;
     }
 
@@ -847,7 +875,6 @@ function App() {
      * failed start, so they have to be attached again.
      */
     const startFailed = (reason: string) => {
-      runTarget.current = null;
       const current = latestWorkspace.current;
       if (!composerEmpty.current || current.selectedProjectId !== projectId || current.selectedChatId !== chatId) {
         setWorkspace((state) => appendMessage(state, projectId, chatId, {
@@ -863,51 +890,67 @@ function App() {
       composerRef.current?.focus();
     };
 
+    // While this start is pending, events that name no known run are held for it.
+    // The count goes down when the start settles, and the held events go with
+    // the last of them.
+    const finishStart = () => {
+      startsPending.current -= 1;
+      if (startsPending.current === 0) eventBuffer.current = [];
+    };
+    startsPending.current += 1;
     let started: Awaited<ReturnType<typeof startRun>>;
     try {
       started = await startRun(request);
     } catch (error) {
-      if (runAttempt.current !== attempt) return;
-      pendingStartAttempt.current = null;
-      setRunStarting(false);
+      finishStart();
+      if (liveRun()?.attempt !== attempt) return;
+      forget();
       startFailed(error instanceof Error ? error.message : String(error));
       return;
     }
-    if (runAttempt.current !== attempt) {
+    const live = liveRun();
+    // The chat's run was abandoned while the start was in flight: the run it
+    // started is cancelled rather than left working for nobody.
+    if (live?.attempt !== attempt) {
+      finishStart();
       if (started.ok) void cancelRun(started.runId);
       return;
     }
-    pendingStartId.current = null;
-    pendingStartAttempt.current = null;
-    setRunStarting(false);
     if (!started.ok) {
+      finishStart();
+      forget();
       startFailed(started.message);
       return;
     }
 
-    activeRunId.current = started.runId;
     const buffered = eventBuffer.current
       .filter((event) => event.runId === started.runId)
       .sort((left, right) => left.seq - right.seq);
-    eventBuffer.current = [];
-    setRunView(buffered.reduce(applyRunEvent, createRunView(started.runId, prompt, request.approvalMode)));
+    eventBuffer.current = eventBuffer.current.filter((event) => event.runId !== started.runId);
+    finishStart();
+    commit({
+      ...live,
+      runId: started.runId,
+      startId: null,
+      view: buffered.reduce(applyRunEvent, createRunView(started.runId, prompt, request.approvalMode)),
+    });
   };
 
   const answerApproval = (decision: "approved" | "rejected") => {
     const pending = runView?.pendingApproval;
-    if (!runView || !pending) return;
-    if (demoHandle.current) demoHandle.current.respond(pending.callId, decision);
-    else void respondToRun(runView.runId, pending.callId, decision);
+    if (!selectedRun || !pending) return;
+    if (selectedRun.demo) selectedRun.demo.respond(pending.callId, decision);
+    else if (selectedRun.runId !== null) void respondToRun(selectedRun.runId, pending.callId, decision);
   };
 
   /** Answer the agent's question by index. */
   const answerQuestion = (answerIndex: number) => {
     const pending = runView?.pendingQuestion;
-    if (!runView || !pending) return;
+    if (!selectedRun || !pending) return;
     // Choosing one of the model's options after all withdraws the explanation.
     setExplainingQuestion(null);
-    if (demoHandle.current) demoHandle.current.answer(pending.callId, answerIndex);
-    else void answerRunQuestion(runView.runId, pending.callId, answerIndex);
+    if (selectedRun.demo) selectedRun.demo.answer(pending.callId, answerIndex);
+    else if (selectedRun.runId !== null) void answerRunQuestion(selectedRun.runId, pending.callId, answerIndex);
   };
 
   /** Hand the pending question to the composer; the answer goes out with the note. */
@@ -917,10 +960,12 @@ function App() {
     setExplainingQuestion((current) => current === pending.callId ? null : pending.callId);
   };
 
+  /** Stop the chat on screen. Its start is abandoned if the run has not begun. */
   const stopRun = () => {
-    if (demoHandle.current) demoHandle.current.cancel();
-    else if (activeRunId.current) void cancelRun(activeRunId.current);
-    else if (pendingStartAttempt.current !== null) resetRun();
+    if (!selectedRun) return;
+    if (selectedRun.demo) selectedRun.demo.cancel();
+    else if (selectedRun.runId !== null) void cancelRun(selectedRun.runId);
+    else resetRun(selectedRun.chatId);
   };
 
   /** Picking a chat gets the sidebar out of the way only when it is in the way.
@@ -956,7 +1001,7 @@ function App() {
    */
   const removeChat = (projectId: string, chatId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
-    if (runTarget.current?.projectId === projectId && runTarget.current.chatId === chatId) resetRun(true);
+    resetRun(chatId, true);
     setWorkspace((current) => deleteChat(current, projectId, chatId));
     clearComposer();
     setAttachments([]);
@@ -965,7 +1010,7 @@ function App() {
 
   const removeProject = (projectId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
-    if (runTarget.current?.projectId === projectId) resetRun(true);
+    for (const chat of workspace.projects.find((project) => project.id === projectId)?.chats ?? []) resetRun(chat.id, true);
     setWorkspace((current) => deleteProject(current, projectId));
     setExpandedProjects((current) => {
       const next = new Set(current);
@@ -1182,14 +1227,14 @@ function App() {
     const project = workspace.projects.find((candidate) => candidate.id === projectId);
     const chat = project?.chats.find((candidate) => candidate.id === chatId);
     if (!project || !chat) return;
-    if (action === "archive" && (runTarget.current?.chatId === chatId || !hasDesktopRuntime() || !storageAvailable || storageRecovery.required)) {
+    if (action === "archive" && (runsRef.current.has(chatId) || !hasDesktopRuntime() || !storageAvailable || storageRecovery.required)) {
       setStorageError("Archive is available in the desktop app after the chat's run finishes and saved chats are healthy. You can still export a copy.");
       return;
     }
     const exported = await exportChats({ ...workspace, selectedProjectId: projectId, selectedChatId: chatId, projects: [{ ...project, chats: [chat] }] });
     if (exported && action === "archive") {
       const current = latestWorkspace.current.projects.find((candidate) => candidate.id === projectId)?.chats.find((candidate) => candidate.id === chatId);
-      if (current !== chat || runTarget.current?.chatId === chatId) {
+      if (current !== chat || runsRef.current.has(chatId)) {
         setStorageError("A copy was exported. The chat changed during export, so it remains here.");
       } else removeChat(projectId, chatId);
     }
@@ -1256,13 +1301,13 @@ function App() {
    * left in the transcript. A run keeps appending activity while it waits, so a
    * card inside the stream scrolls away from the user it is waiting for.
    */
-  const pendingApproval = runBelongsToSelectedChat ? runView?.pendingApproval ?? null : null;
+  const pendingApproval = runView?.pendingApproval ?? null;
   /**
    * The question the run is stopped on, docked for the same reason. In the
    * stream it was drawn at the top of the run, above the plan and the reply
    * already on screen, so it arrived where nobody was looking.
    */
-  const pendingQuestion = runBelongsToSelectedChat ? runView?.pendingQuestion ?? null : null;
+  const pendingQuestion = runView?.pendingQuestion ?? null;
   /** Words in the composer while a question waits: Send will answer with them. */
   const answeringInWords = pendingQuestion !== null && (explaining || composer.trim() !== "");
   // Keyed on the three arrays the steps are built from rather than on the view,
@@ -1286,9 +1331,9 @@ function App() {
    * thinking, and the Activity heading and approval card already say what those
    * waits are, so the spinner stands down for both.
    */
-  const thinking = runBelongsToSelectedChat && (runView !== null && runView.outcome === null
+  const thinking = runView !== null && runView.outcome === null
     ? providerIsThinking(runView, runActivityNodes)
-    : runView === null && runStarting);
+    : runView === null && runStarting;
   const autoPlaytest = workspace.preferences.autoPlaytest;
   const card = providerCard(provider, providerStatus, hasDesktopRuntime());
   const invite = hydrated ? communityInvite(COMMUNITY_INVITE_URL, workspace.preferences.communityInviteDismissed, workspace.projects) : "none";
@@ -1423,8 +1468,10 @@ function App() {
                 {expanded && <div className="chat-list">
                   {project.chats.length === 0 && <p className="empty-folder">No chats yet</p>}
                   {chatsByActivity(project.chats).map((chat) => {
-                    const runHere = isRunning && runLocation?.chatId === chat.id;
-                    const runState = runHere ? (runNeedsInput ? "chat-needs-input" : "chat-running") : "";
+                    const chatRun = runs.get(chat.id) ?? null;
+                    const runHere = chatRun !== null;
+                    const needsInput = chatRun !== null && runNeedsInputOf(chatRun);
+                    const runState = runHere ? (needsInput ? "chat-needs-input" : "chat-running") : "";
                     return <div className={`chat-row ${workspace.selectedChatId === chat.id ? "chat-selected" : ""} ${runState}`} key={chat.id}>
                       <button className="chat-main" onClick={() => selectChat(project.id, chat.id)}><MessageSquare size={15} /><span className="chat-row-title">{chat.title}</span>
                         {/* While a run is in this chat, its state replaces the
@@ -1432,7 +1479,7 @@ function App() {
                             it is waiting, is the fact worth having from any
                             other chat. */}
                         {runHere
-                          ? <span className="chat-run-mark" role="status" aria-label={runNeedsInput ? "Roqer needs your answer" : "Roqer is working"} title={runNeedsInput ? "Roqer needs your answer" : "Roqer is working"}>{runNeedsInput ? <CircleDot size={13} /> : <Loader2 size={13} />}</span>
+                          ? <span className="chat-run-mark" role="status" aria-label={needsInput ? "Roqer needs your answer" : "Roqer is working"} title={needsInput ? "Roqer needs your answer" : "Roqer is working"}>{needsInput ? <CircleDot size={13} /> : <Loader2 size={13} />}</span>
                           : <time>{relativeTime(chat.updatedAt)}</time>}
                       </button>
                       <RowMenu className="dark chat-menu" label={`${chat.title} options`} items={CHAT_MENU_ITEMS} onSelect={(action) => void chatAction(project.id, chat.id, action)} />
@@ -1566,11 +1613,11 @@ function App() {
           {selectedChat && selectedChat.messages.length > 0
             ? <ConversationMessages key={selectedChat.id} messages={selectedChat.messages} onOpenInStudio={openArtifactInStudio} />
             : <EmptyConversation onSuggestion={setComposer} />}
-          {runView && runBelongsToSelectedChat
+          {runView
             ? <LiveRun view={runView} steps={runSteps} nodes={runActivityNodes} onOpenInStudio={openArtifactInStudio} />
             // The run is still being started, so the dots stand in for the
             // assistant block that is about to exist.
-            : runStarting && runBelongsToSelectedChat && <div className="mock-run"><section className="message assistant-message"><div className="message-content">
+            : runStarting && <div className="mock-run"><section className="message assistant-message"><div className="message-content">
               <TypingIndicator done={false} />
             </div></section></div>}
         </div></div>
@@ -1613,12 +1660,6 @@ function App() {
             {/* A disabled composer with no reason reads as a broken one. This
                 says where the run is and offers the two things that can be done
                 about it from here: go to it, or stop it. */}
-            {runElsewhere && <div className={`composer-status run-elsewhere${runNeedsInput ? " needs-input" : ""}`} role="status">
-              {runNeedsInput ? <CircleDot size={13} /> : <Loader2 size={13} />}
-              <span>{runNeedsInput ? "Roqer needs your answer in" : "Roqer is working in"} <strong>{runChat?.title ?? "another chat"}</strong></span>
-              {runLocation && <button onClick={() => selectChat(runLocation.projectId, runLocation.chatId)}>Open</button>}
-              <button onClick={stopRun}>Stop</button>
-            </div>}
             {draggingImage && <div className="composer-drop-hint">Drop an image or a video to attach it</div>}
             {attachmentError && <div className="attachment-notice" role="alert">{attachmentError}<button onClick={() => setAttachmentError(null)} aria-label="Dismiss"><X size={14} /></button></div>}
             {attachments.length > 0 && <div className="attachment-row">{attachments.map((attachment) => <div className={`attachment-chip${attachment.clip === undefined ? "" : " clip"}`} key={attachment.id}>
@@ -1659,7 +1700,7 @@ function App() {
               if (!isLongPaste(text)) return;
               event.preventDefault();
               setPastedBlocks((current) => [...current, { id: createId("paste"), text }]);
-            }} placeholder={runElsewhere ? "Roqer is busy in another chat" : explaining ? "Your answer, in your own words" : pendingQuestion ? "Or write your own answer…" : steering ? "Add a note. Roqer reads it at its next step." : "Describe what you want to build or change…"} aria-label="Message" disabled={isRunning && !steering} />
+            }} placeholder={explaining ? "Your answer, in your own words" : pendingQuestion ? "Or write your own answer…" : steering ? "Add a note. Roqer reads it at its next step." : "Describe what you want to build or change…"} aria-label="Message" disabled={isRunning && !steering} />
             <div className="composer-toolbar">
               {/* A note carries words only; a picture cannot be attached to a
                   turn that is already in progress. */}
