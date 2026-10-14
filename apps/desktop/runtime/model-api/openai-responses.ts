@@ -1,4 +1,5 @@
 import {
+  isTurnServiceTier,
   TransientTurnError,
   UnusableToolCallError,
   type TurnMessage,
@@ -9,6 +10,7 @@ import {
   type TurnUsage,
 } from "./turn-contract";
 
+import type { CustomServiceTier } from "../../shared/custom-providers";
 import type { TurnTransport } from "../agent-loop";
 import {
   assembledToolCall, DEFAULT_REQUEST_TIMEOUT_MS, endpointRefusal, endpointUrl, fetchWithin, frameData, interruptedStream,
@@ -38,6 +40,8 @@ export type OpenAiResponsesOptions = Readonly<{
   /** Whether to send the run's reasoning effort, and ask for reasoning back. */
   reasoning: boolean;
   maxOutputTokens?: number;
+  /** The service tier to ask for; absent sends none. */
+  serviceTier?: CustomServiceTier;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }>;
@@ -209,6 +213,7 @@ export class OpenAiResponsesTurns implements TurnTransport {
         store: false,
         ...(maxOutput === undefined ? {} : { max_output_tokens: maxOutput }),
         ...(Object.keys(reasoning).length === 0 ? {} : { reasoning }),
+        ...(this.options.serviceTier === undefined ? {} : { service_tier: this.options.serviceTier }),
         ...(include ? { include: ["reasoning.encrypted_content"] } : {}),
         ...(request.tools.length === 0 ? {} : {
           // Roqer's tool schemas are not written for strict mode, which some
@@ -251,7 +256,7 @@ export class OpenAiResponsesTurns implements TurnTransport {
             if (part === "include") this.refused.add("replay");
             continue;
           }
-          throw endpointRefusal(response, refusal, label, apiKey);
+          throw endpointRefusal(response, refusal, label, apiKey, this.options.serviceTier);
         }
         try {
           yield* this.readStream(response.body, cancellation.signal, signal, opened.alive);
@@ -277,6 +282,7 @@ export class OpenAiResponsesTurns implements TurnTransport {
     const items = new Map<number, StreamItem>();
     let reason: TurnStopReason | undefined;
     let usage: TurnUsage | undefined;
+    let servedTier: string | undefined;
     let refusal = false;
     let produced = false;
 
@@ -402,6 +408,9 @@ export class OpenAiResponsesTurns implements TurnTransport {
           const finished = isRecord(payload.response) ? payload.response : {};
           const reported = usageOf(finished.usage);
           if (reported !== undefined) usage = reported;
+          // The finished response names the tier that served it; the one at
+          // `response.created` may be only what was asked for.
+          if (isTurnServiceTier(finished.service_tier)) servedTier = finished.service_tier;
           if (payload.type === "response.completed") {
             reason = "end";
           } else {
@@ -448,6 +457,11 @@ export class OpenAiResponsesTurns implements TurnTransport {
     else if (reason === "end" && refusal) reason = "refusal";
     if (hasReasoning) this.produced.push({ key: turnKey(text, calls), items: kept });
     for (const call of calls) yield { kind: "tool-call", call };
-    yield usage === undefined ? { kind: "completed", stopReason: reason } : { kind: "completed", stopReason: reason, usage };
+    yield {
+      kind: "completed",
+      stopReason: reason,
+      ...(usage === undefined ? {} : { usage }),
+      ...(servedTier === undefined ? {} : { serviceTier: servedTier }),
+    };
   }
 }

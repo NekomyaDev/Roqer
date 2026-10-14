@@ -278,8 +278,13 @@ export type TurnEvent =
    */
   | Readonly<{ kind: "tool-input"; characters: number }>
   | Readonly<{ kind: "tool-call"; call: TurnToolCall }>
-  /** `usage` is absent when the provider did not report it; it is never invented. */
-  | Readonly<{ kind: "completed"; stopReason: TurnStopReason; usage?: TurnUsage }>
+  /**
+   * `usage` is absent when the provider did not report it; it is never invented.
+   * `serviceTier` is the tier the endpoint says served the turn, in its own
+   * words (`default`, `flex`, `priority`), and likewise only when it said:
+   * billing follows the tier that served, not the one asked for.
+   */
+  | Readonly<{ kind: "completed"; stopReason: TurnStopReason; usage?: TurnUsage; serviceTier?: string }>
   | Readonly<{ kind: "failed"; code: TurnFailureCode; message: string; usage?: TurnUsage }>;
 
 export type TurnEventKind = TurnEvent["kind"];
@@ -445,6 +450,11 @@ export function isTurnUsage(value: unknown): value is TurnUsage {
 const isCharacterCount = (value: unknown): boolean =>
   Number.isSafeInteger(value) && (value as number) > 0;
 
+/** A service tier as an endpoint names one: a short lowercase word, never free text. */
+export function isTurnServiceTier(value: unknown): value is string {
+  return typeof value === "string" && /^[a-z][a-z_-]{0,31}$/.test(value);
+}
+
 export function isTurnEvent(value: unknown): value is TurnEvent {
   if (!isRecord(value)) return false;
   switch (value.kind) {
@@ -458,9 +468,10 @@ export function isTurnEvent(value: unknown): value is TurnEvent {
     case "tool-call":
       return hasOnlyKeys(value, ["kind", "call"]) && isTurnToolCall(value.call);
     case "completed":
-      return hasOnlyKeys(value, ["kind", "stopReason", "usage"]) && typeof value.stopReason === "string" &&
+      return hasOnlyKeys(value, ["kind", "stopReason", "usage", "serviceTier"]) && typeof value.stopReason === "string" &&
         TURN_STOP_REASONS.includes(value.stopReason as TurnStopReason) &&
-        (value.usage === undefined || isTurnUsage(value.usage));
+        (value.usage === undefined || isTurnUsage(value.usage)) &&
+        (value.serviceTier === undefined || isTurnServiceTier(value.serviceTier));
     case "failed":
       return hasOnlyKeys(value, ["kind", "code", "message", "usage"]) && typeof value.code === "string" &&
         TURN_FAILURE_CODES.includes(value.code as TurnFailureCode) &&

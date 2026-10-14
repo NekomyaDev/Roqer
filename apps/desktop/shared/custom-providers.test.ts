@@ -74,6 +74,24 @@ test("a save request is checked field by field and comes back normalized", () =>
   assert.equal(parseCustomConnectionSave({ ...base, extra: true }).ok, false);
 });
 
+test("a service tier is a known one, and only on a connection whose format can send it", () => {
+  const model = (serviceTier: unknown) => ({ id: "openai/gpt-5", displayName: "GPT-5", images: true, efforts: [], serviceTier });
+  const save = (format: string, serviceTier: unknown) =>
+    parseCustomConnectionSave({ name: "E", format, baseUrl: "https://e.example/v1", models: [model(serviceTier)] });
+
+  for (const format of ["openai", "openai-responses"]) {
+    for (const tier of ["flex", "priority"]) assert.equal(save(format, tier).ok, true, `${format} ${tier}`);
+  }
+  // The standard tier is the absence of one, never a stored value.
+  assert.equal(save("openai", "default").ok, false);
+  assert.equal(save("openai", "ultrafast").ok, false);
+  const anthropic = save("anthropic", "priority");
+  assert.match(anthropic.ok ? "" : anthropic.message, /cannot ask for a service tier/);
+  assert.equal(isCustomConnectionView({
+    id: "conn-abcd1234", name: "A", format: "anthropic", baseUrl: "https://api.anthropic.com/v1", models: [model("flex")], hasKey: false,
+  }), false);
+});
+
 test("the renderer's view says whether a key is saved and never carries one", () => {
   const view = {
     id: "conn-abcd1234", name: "OpenAI", format: "openai", baseUrl: "https://api.openai.com/v1", models: [], hasKey: true,

@@ -98,6 +98,28 @@ export function defaultCustomReasoningEffort(efforts: readonly CustomReasoningEf
   return best;
 }
 
+/**
+ * The service tiers a custom model can ask for, sent as `service_tier`. Absent
+ * is the endpoint's standard tier, so that is never stored or sent.
+ *
+ * `flex` is cheaper and slower, and fails rather than falling back when the
+ * provider has no spare capacity; `priority` is faster and costs more. OpenAI
+ * takes both on chat completions and Responses, and OpenRouter routes them to
+ * the providers that offer them. Anthropic's own API names its tiers
+ * differently, so an Anthropic-format connection takes neither.
+ */
+export const CUSTOM_SERVICE_TIERS = ["flex", "priority"] as const;
+export type CustomServiceTier = typeof CUSTOM_SERVICE_TIERS[number];
+
+export function isCustomServiceTier(value: unknown): value is CustomServiceTier {
+  return CUSTOM_SERVICE_TIERS.includes(value as CustomServiceTier);
+}
+
+/** Whether a connection in this format can send a service tier. */
+export function takesServiceTier(format: CustomApiFormat): boolean {
+  return format === "openai" || format === "openai-responses";
+}
+
 export type CustomModel = Readonly<{
   /** The id the endpoint knows the model by, e.g. `deepseek/deepseek-chat` or `qwen2.5-coder:32b`. */
   id: string;
@@ -110,6 +132,8 @@ export type CustomModel = Readonly<{
   contextWindow?: number;
   /** Largest answer to ask for in one turn, when the user knows it. */
   maxOutputTokens?: number;
+  /** The service tier to ask for; absent asks for none, which is the standard tier. */
+  serviceTier?: CustomServiceTier;
 }>;
 
 export type CustomConnection = Readonly<{
@@ -223,26 +247,30 @@ export function normalizeCustomBaseUrl(value: unknown): { ok: true; baseUrl: str
 }
 
 export function isCustomModel(value: unknown): value is CustomModel {
-  if (!isRecord(value) ||
-    !hasOnlyKeys(value, ["id", "displayName", "images", "efforts", "contextWindow", "maxOutputTokens"])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    "id", "displayName", "images", "efforts", "contextWindow", "maxOutputTokens", "serviceTier",
+  ])) return false;
   return isCustomModelId(value.id) && isDisplayText(value.displayName) &&
     typeof value.images === "boolean" && isCustomReasoningEffortList(value.efforts) &&
     (value.contextWindow === undefined ||
       isBoundedInteger(value.contextWindow, MIN_CUSTOM_CONTEXT_WINDOW, MAX_CUSTOM_CONTEXT_WINDOW)) &&
     (value.maxOutputTokens === undefined ||
-      isBoundedInteger(value.maxOutputTokens, MIN_CUSTOM_MAX_OUTPUT, MAX_CUSTOM_MAX_OUTPUT));
+      isBoundedInteger(value.maxOutputTokens, MIN_CUSTOM_MAX_OUTPUT, MAX_CUSTOM_MAX_OUTPUT)) &&
+    (value.serviceTier === undefined || isCustomServiceTier(value.serviceTier));
 }
 
-function isModelList(value: unknown): value is CustomModel[] {
+/** A model list for a connection in `format`: a tier only where the format can send one, so none is saved that would be ignored. */
+function isModelList(value: unknown, format: CustomApiFormat): value is CustomModel[] {
   return Array.isArray(value) && value.length <= MAX_CUSTOM_MODELS && value.every(isCustomModel) &&
-    new Set(value.map((model) => model.id)).size === value.length;
+    new Set(value.map((model) => model.id)).size === value.length &&
+    (takesServiceTier(format) || value.every((model) => model.serviceTier === undefined));
 }
 
 export function isCustomConnection(value: unknown): value is CustomConnection {
   if (!isRecord(value) || !hasOnlyKeys(value, ["id", "name", "format", "baseUrl", "models"])) return false;
   const url = normalizeCustomBaseUrl(value.baseUrl);
   return isCustomConnectionId(value.id) && isDisplayText(value.name) && isCustomApiFormat(value.format) &&
-    url.ok && url.baseUrl === value.baseUrl && isModelList(value.models);
+    url.ok && url.baseUrl === value.baseUrl && isModelList(value.models, value.format);
 }
 
 export function isCustomConnectionView(value: unknown): value is CustomConnectionView {
@@ -299,6 +327,9 @@ export function parseCustomConnectionSave(value: unknown):
   }
   if (new Set(value.models.map((model) => (model as CustomModel).id)).size !== value.models.length) {
     return { ok: false, message: "Each model id can only be added once per connection." };
+  }
+  if (!takesServiceTier(value.format) && value.models.some((model) => (model as CustomModel).serviceTier !== undefined)) {
+    return { ok: false, message: "An Anthropic-format endpoint cannot ask for a service tier." };
   }
   if (value.apiKey !== undefined && value.apiKey !== null) {
     if (typeof value.apiKey !== "string" || value.apiKey.trim().length === 0 ||

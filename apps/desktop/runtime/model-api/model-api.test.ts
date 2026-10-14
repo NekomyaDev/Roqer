@@ -98,6 +98,40 @@ test("an OpenAI-compatible turn sends the key and effort, and the right output f
   assert.equal("max_completion_tokens" in sent[1].body, false);
 });
 
+test("a service tier is sent only when the model asks for one, and the tier that served is reported", async () => {
+  const flexServed = {
+    frames: [
+      json({ service_tier: "flex", choices: [{ delta: { content: "ok" } }] }),
+      json({ service_tier: "flex", choices: [{ delta: {}, finish_reason: "stop" }] }),
+      "[DONE]",
+    ],
+  };
+  const unsaid = { frames: [json({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }), "[DONE]"] };
+  const { fetch, sent } = endpoint([flexServed, unsaid]);
+  const options = { baseUrl: "https://openrouter.ai/api/v1", apiKey: null, label: "OpenRouter", reasoning: false, fetch };
+  const flex = await collect(new OpenAiChatTurns({ ...options, serviceTier: "flex" }).streamTurn(REQUEST, new AbortController().signal));
+  const standard = await collect(new OpenAiChatTurns(options).streamTurn(REQUEST, new AbortController().signal));
+
+  assert.equal(sent[0].body.service_tier, "flex");
+  assert.deepEqual(flex.at(-1), { kind: "completed", stopReason: "end", serviceTier: "flex" });
+  assert.equal("service_tier" in sent[1].body, false, "the standard tier sends nothing");
+  assert.deepEqual(standard.at(-1), { kind: "completed", stopReason: "end" }, "a tier nobody reported is not invented");
+});
+
+test("a flex request refused for want of capacity says so, and is still worth another attempt", async () => {
+  const busy = { status: 429, body: json({ error: { message: "Resource Unavailable" } }) };
+  const { fetch } = endpoint([busy, busy]);
+  const options = { baseUrl: "https://api.openai.com/v1", apiKey: null, label: "OpenAI", reasoning: false, fetch };
+  await assert.rejects(
+    () => collect(new OpenAiChatTurns({ ...options, serviceTier: "flex" }).streamTurn(REQUEST, new AbortController().signal)),
+    (error: Error) => error instanceof TransientTurnError && /no flex capacity/.test(error.message) && /Standard in Settings/.test(error.message),
+  );
+  await assert.rejects(
+    () => collect(new OpenAiChatTurns(options).streamTurn(REQUEST, new AbortController().signal)),
+    (error: Error) => error instanceof TransientTurnError && /rate limiting this key/.test(error.message),
+  );
+});
+
 test("a model that could not form its tool call is reported as that, not as an empty answer", async () => {
   // OpenRouter's shape for Gemini's MALFORMED_FUNCTION_CALL: an ordinary finish
   // reason, no content, and the provider's own reason beside it.
@@ -1013,6 +1047,23 @@ test("a Responses turn streams prose and a tool call, with the whole conversatio
   assert.deepEqual(responsesInput(sent[0]), [{ type: "message", role: "user", content: [{ type: "input_text", text: "Build a shop" }] }]);
   assert.equal("reasoning" in sent[0].body, false, "no effort for a model that takes none");
   assert.equal("include" in sent[0].body, false, "no encrypted reasoning asked of a model without reasoning");
+  assert.equal("service_tier" in sent[0].body, false, "no tier asked of a model that asks for none");
+});
+
+test("a Responses turn sends its service tier and reports the one the finished response names", async () => {
+  const { fetch, sent } = endpoint([{
+    frames: [
+      // What was asked for, before the turn was served.
+      json({ type: "response.created", response: { status: "in_progress", service_tier: "priority" } }),
+      json({ type: "response.output_text.delta", output_index: 0, delta: "ok" }),
+      json({ type: "response.completed", response: { status: "completed", service_tier: "default" } }),
+    ],
+  }]);
+  const turns = new OpenAiResponsesTurns({ baseUrl: "https://api.openai.com/v1", apiKey: null, label: "OpenAI", reasoning: false, serviceTier: "priority", fetch });
+
+  const events = await collect(turns.streamTurn(REQUEST, new AbortController().signal));
+  assert.equal(sent[0].body.service_tier, "priority");
+  assert.deepEqual(events.at(-1), { kind: "completed", stopReason: "end", serviceTier: "default" });
 });
 
 test("a Responses tool result answers its call, and a screenshot follows it as the user's picture", async () => {

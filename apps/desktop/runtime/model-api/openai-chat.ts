@@ -1,4 +1,5 @@
 import {
+  isTurnServiceTier,
   TransientTurnError,
   UnusableToolCallError,
   type TurnToolCall,
@@ -8,6 +9,7 @@ import {
   type TurnUsage,
 } from "./turn-contract";
 
+import type { CustomServiceTier } from "../../shared/custom-providers";
 import type { TurnTransport } from "../agent-loop";
 import {
   assembledToolCall, DEFAULT_REQUEST_TIMEOUT_MS, endpointRefusal, endpointUrl, fetchWithin, frameData, interruptedStream,
@@ -34,6 +36,8 @@ export type OpenAiChatOptions = Readonly<{
   /** Whether to send the run's reasoning effort. */
   reasoning: boolean;
   maxOutputTokens?: number;
+  /** The service tier to ask for; absent sends none. */
+  serviceTier?: CustomServiceTier;
   requestTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }>;
@@ -338,6 +342,7 @@ export class OpenAiChatTurns implements TurnTransport {
       stream_options: { include_usage: true },
       ...(maxOutput === undefined ? {} : { [outputLimitField(this.options.baseUrl)]: maxOutput }),
       ...(this.options.reasoning ? { reasoning_effort: request.reasoningEffort } : {}),
+      ...(this.options.serviceTier === undefined ? {} : { service_tier: this.options.serviceTier }),
       ...(request.tools.length === 0 ? {} : {
         tools: request.tools.map((tool) => ({
           type: "function",
@@ -372,7 +377,7 @@ export class OpenAiChatTurns implements TurnTransport {
             this.refused.add(field);
             continue;
           }
-          throw endpointRefusal(response, refusal, label, apiKey);
+          throw endpointRefusal(response, refusal, label, apiKey, this.options.serviceTier);
         }
         try {
           yield* this.readStream(response.body, cancellation.signal, signal, opened.alive);
@@ -398,6 +403,7 @@ export class OpenAiChatTurns implements TurnTransport {
     const pending = new Map<number, PendingToolCall>();
     let reason: TurnStopReason | undefined;
     let usage: TurnUsage | undefined;
+    let servedTier: string | undefined;
     let done = false;
     let produced = false;
     let nativeReason: string | undefined;
@@ -425,6 +431,8 @@ export class OpenAiChatTurns implements TurnTransport {
       }
       const reported = usageOf(payload.usage);
       if (reported !== undefined) usage = reported;
+      // Every chunk may name the tier serving the turn; the last one to say is kept.
+      if (isTurnServiceTier(payload.service_tier)) servedTier = payload.service_tier;
       const choice = Array.isArray(payload.choices) ? payload.choices[0] : undefined;
       if (!isRecord(choice)) continue;
       if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
@@ -496,7 +504,12 @@ export class OpenAiChatTurns implements TurnTransport {
       this.produced.push({ key: turnKey(text, calls), reasoningContent, reasoningDetails: replayedDetails, extraContent });
     }
     for (const call of calls) yield { kind: "tool-call", call };
-    yield usage === undefined ? { kind: "completed", stopReason: reason } : { kind: "completed", stopReason: reason, usage };
+    yield {
+      kind: "completed",
+      stopReason: reason,
+      ...(usage === undefined ? {} : { usage }),
+      ...(servedTier === undefined ? {} : { serviceTier: servedTier }),
+    };
   }
 
   /**

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { CustomConnection, CustomConnectionView } from "../shared/custom-providers";
+import type { CustomConnection, CustomConnectionView, CustomModel } from "../shared/custom-providers";
 import { customModelCatalog, customProviderStatus, listEndpointModels, testCustomModel } from "./custom-provider";
 
 const CONNECTION: CustomConnectionView = {
@@ -108,6 +108,33 @@ test("a connection test sends the lowest effort the model takes, and none to a m
   }
   assert.equal(sent[0].reasoning_effort, "xhigh");
   assert.equal("reasoning_effort" in sent[1], false);
+});
+
+test("a connection test sends the model's service tier and says which tier answered", async () => {
+  const sent: Array<Record<string, unknown>> = [];
+  const servedAs = (tier: string | undefined) => (async (_url: unknown, init?: RequestInit) => {
+    sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    const extra = tier === undefined ? {} : { service_tier: tier };
+    return streaming([
+      JSON.stringify({ ...extra, choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "report_ready", arguments: "{\"ok\":true}" } }] }, finish_reason: "tool_calls" }] }),
+      "[DONE]",
+    ])("");
+  }) as typeof globalThis.fetch;
+  const flex: CustomModel = { id: "openai/gpt-5", displayName: "GPT-5", images: true, efforts: [], serviceTier: "flex" };
+  const check = (model: CustomModel, tier: string | undefined) =>
+    testCustomModel({ connection: CONNECTION, model, apiKey: null, fetch: servedAs(tier) });
+
+  assert.deepEqual(await check(flex, "flex"), {
+    ok: true, message: "GPT-5 answered and called a tool. It is ready to use. OpenRouter served it on the flex tier.",
+  });
+  assert.equal(sent[0].service_tier, "flex");
+  // Billed at the tier that served, so a quiet fallback is said out loud.
+  assert.match((await check(flex, "default")).message, /served it on the standard tier, not flex, so this model may not offer flex there\.$/);
+  assert.match((await check(flex, undefined)).message, /did not say which service tier served it\.$/);
+  // A model that asks for no tier hears about one only when it was not the standard one.
+  assert.equal((await check(CONNECTION.models[0], "default")).message, "DeepSeek answered and called a tool. It is ready to use.");
+  assert.equal("service_tier" in sent[3], false);
+  assert.match((await check(CONNECTION.models[0], "priority")).message, /OpenRouter served it on the priority tier\.$/);
 });
 
 test("a Responses connection is tested against its responses endpoint", async () => {
