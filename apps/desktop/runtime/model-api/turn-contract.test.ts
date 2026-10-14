@@ -172,6 +172,10 @@ test("stream events accept only the gateway's own shapes", () => {
   assert.equal(isTurnEvent({ kind: "tool-input", characters: 12 }), true);
   assert.equal(isTurnEvent({ kind: "tool-input", characters: 1.5 }), false);
   assert.equal(isTurnEvent({ kind: "tool-input", characters: 12, text: "{\"op" }), false);
+  // The tier that served is the endpoint's own word for it, never free text.
+  assert.equal(isTurnEvent({ kind: "completed", stopReason: "end", serviceTier: "flex" }), true);
+  assert.equal(isTurnEvent({ kind: "completed", stopReason: "end", serviceTier: "Flex tier, as requested" }), false);
+  assert.equal(isTurnEvent({ kind: "completed", stopReason: "end", serviceTier: "" }), false);
   assert.equal(isTurnUsage({ inputTokens: -1, outputTokens: 0 }), false);
   assert.equal(isTurnUsage({ inputTokens: 0, outputTokens: 0, costUsd: 1 }), false);
 });

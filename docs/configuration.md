@@ -210,6 +210,17 @@ is still working and never reach the reply. If the endpoint refuses summaries,
 encrypted reasoning, or reasoning sent back, Roqer stops sending that part for
 the rest of the run.
 
+A model on an OpenAI-compatible or Responses endpoint can ask for a service
+tier in Settings: Flex, which is cheaper and slower, or Priority, which is
+faster and costs more. Roqer sends it as `service_tier`, and Standard sends
+nothing. OpenAI takes both, and OpenRouter routes them to the providers that
+offer them. A provider with no flex capacity refuses the request instead of
+serving it on the standard tier, and Roqer retries it like any rate limit. The
+endpoint bills the tier that served each request, which is not always the one
+asked for, so a model's Test says which tier answered. Anthropic-format
+endpoints offer no tier setting, because Anthropic's own API names its tiers
+differently.
+
 Roqer starts its bundled bridge and installs the matching Studio plugin on
 every launch. To run your own bridge instead, start it before Roqer; Roqer
 adopts it rather than replacing it:

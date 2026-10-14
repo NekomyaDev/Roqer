@@ -118,7 +118,7 @@ test("a damaged file is set aside for diagnosis rather than overwritten", async 
   });
 });
 
-test("a schema 1 file reads its reasoning flag as the efforts it meant, and saves as schema 2", async () => {
+test("a schema 1 file reads its reasoning flag as the efforts it meant, and saves as the current schema", async () => {
   await withStore(async (store, file) => {
     await fs.writeFile(file, JSON.stringify({
       schemaVersion: 1,
@@ -138,10 +138,46 @@ test("a schema 1 file reads its reasoning flag as the efforts it meant, and save
 
     await store.save({ ...OPENROUTER, id: connection.id, models: connection.models });
     const written = JSON.parse(await fs.readFile(file, "utf8")) as { schemaVersion: number; connections: Array<{ models: Array<Record<string, unknown>> }> };
-    assert.equal(written.schemaVersion, 2);
+    assert.equal(written.schemaVersion, 3);
     assert.deepEqual(written.connections[0].models[0].efforts, ["low", "medium", "high"]);
     assert.equal("reasoning" in written.connections[0].models[0], false);
   });
+});
+
+test("a schema 2 file reads as it is, and a service tier saved since survives a reopen", async () => {
+  await withStore(async (store, file) => {
+    await fs.writeFile(file, JSON.stringify({
+      schemaVersion: 2,
+      connections: [{ id: "conn-abcd1234", ...OPENROUTER }],
+    }), "utf8");
+    const [connection] = await store.list();
+    assert.equal(store.takeDamagedNotice(), undefined);
+    assert.equal(connection.models[0].serviceTier, undefined, "a schema 2 model asks for the standard tier");
+
+    await store.save({ ...OPENROUTER, id: connection.id, models: [{ ...OPENROUTER.models[0], serviceTier: "flex" }] });
+    assert.equal(JSON.parse(await fs.readFile(file, "utf8")).schemaVersion, 3);
+    const reopened = new CustomProviderStore({ file, protector: protector() });
+    assert.equal((await reopened.list())[0].models[0].serviceTier, "flex");
+  });
+});
+
+test("a schema 3 model with an unknown tier, or a tier its format cannot send, is damaged", async () => {
+  for (const connection of [
+    { format: "openai", baseUrl: "https://x.example/v1", serviceTier: "default" },
+    { format: "anthropic", baseUrl: "https://api.anthropic.com/v1", serviceTier: "priority" },
+  ]) {
+    await withStore(async (store, file) => {
+      await fs.writeFile(file, JSON.stringify({
+        schemaVersion: 3,
+        connections: [{
+          id: "conn-abcd1234", name: "X", format: connection.format, baseUrl: connection.baseUrl,
+          models: [{ id: "a", displayName: "A", images: false, efforts: [], serviceTier: connection.serviceTier }],
+        }],
+      }), "utf8");
+      assert.deepEqual(await store.list(), []);
+      assert.ok(store.takeDamagedNotice() !== undefined);
+    });
+  }
 });
 
 test("a schema 2 model with a reasoning flag or out-of-order efforts is damaged, not guessed at", async () => {

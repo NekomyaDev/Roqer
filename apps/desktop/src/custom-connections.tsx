@@ -7,11 +7,13 @@ import {
   DEFAULT_ANTHROPIC_MAX_OUTPUT,
   MAX_CUSTOM_MODELS,
   sortCustomReasoningEfforts,
+  takesServiceTier,
   type CustomApiFormat,
   type CustomConnectionSave,
   type CustomConnectionView,
   type CustomModel,
   type CustomReasoningEffort,
+  type CustomServiceTier,
 } from "../shared/custom-providers";
 import {
   importCustomModels, listCustomConnections, removeCustomConnection, saveCustomConnection, testCustomModel,
@@ -60,6 +62,13 @@ const EFFORT_LABELS: Record<CustomReasoningEffort, string> = {
   max: "Max",
 };
 
+/** Each tier a model can ask for, with what choosing it sends. Standard sends nothing. */
+const SERVICE_TIERS: ReadonlyArray<{ tier: CustomServiceTier | undefined; label: string; title: string }> = [
+  { tier: undefined, label: "Standard", title: "Sends no service tier, so the endpoint uses its standard one." },
+  { tier: "flex", label: "Flex", title: "Sends \"flex\": cheaper and slower." },
+  { tier: "priority", label: "Priority", title: "Sends \"priority\": faster, at a higher price." },
+];
+
 /** One-click effort sets for the common families; the toggles stay the truth. */
 const EFFORT_SHORTCUTS: ReadonlyArray<{ label: string; title: string; efforts: readonly CustomReasoningEffort[] }> = [
   { label: "Standard", title: "Low, medium and high", efforts: ["low", "medium", "high"] },
@@ -76,6 +85,7 @@ type DraftModel = {
   efforts: readonly CustomReasoningEffort[];
   contextWindow: string;
   maxOutputTokens: string;
+  serviceTier: CustomServiceTier | undefined;
 };
 
 type Draft = {
@@ -106,6 +116,7 @@ function draftModel(model?: CustomModel, key = rowKey()): DraftModel {
     efforts: model?.efforts ?? [],
     contextWindow: model?.contextWindow === undefined ? "" : String(model.contextWindow),
     maxOutputTokens: model?.maxOutputTokens === undefined ? "" : String(model.maxOutputTokens),
+    serviceTier: model?.serviceTier,
   };
 }
 
@@ -149,6 +160,8 @@ function saveRequest(draft: Draft): { ok: true; save: CustomConnectionSave } | {
       efforts: sortCustomReasoningEfforts(model.efforts),
       ...(contextWindow === undefined ? {} : { contextWindow }),
       ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+      // A format that cannot send a tier saves none, so switching to it drops the choice.
+      ...(model.serviceTier === undefined || !takesServiceTier(draft.format) ? {} : { serviceTier: model.serviceTier }),
     });
   }
   return {
@@ -546,6 +559,7 @@ function ModelRow({ model, format, open, test, testLabel, canTest, onToggle, onC
   const name = model.displayName.trim() || id || "New model";
   const effort = effortSummary(model.efforts);
   const context = compactTokens(model.contextWindow);
+  const tier = takesServiceTier(format) ? SERVICE_TIERS.find((entry) => entry.tier !== undefined && entry.tier === model.serviceTier) : undefined;
   return <div className={`custom-model ${open ? "open" : ""}`}>
     <div className="custom-model-line">
       <button type="button" className="custom-model-summary" aria-expanded={open} onClick={onToggle}>
@@ -558,6 +572,7 @@ function ModelRow({ model, format, open, test, testLabel, canTest, onToggle, onC
           {model.images && <span className="custom-badge" title="Sees images"><Eye size={12} /> Images</span>}
           <span className={`custom-badge ${effort === undefined ? "quiet" : ""}`} title="Reasoning effort">{effort ?? "No effort"}</span>
           {context !== undefined && <span className="custom-badge" title="Context window">{context}</span>}
+          {tier !== undefined && <span className="custom-badge" title="Service tier">{tier.label}</span>}
         </span>
       </button>
       <div className="settings-actions">
@@ -572,12 +587,35 @@ function ModelRow({ model, format, open, test, testLabel, canTest, onToggle, onC
         <label className="custom-field"><span>Display name</span><input value={model.displayName} maxLength={60} placeholder={id || "Shown in the model picker"} onChange={(event) => onChange({ displayName: event.target.value })} /></label>
       </div>
       <EffortPicker efforts={model.efforts} onChange={(efforts) => onChange({ efforts })} />
+      {takesServiceTier(format) && <ServiceTierPicker tier={model.serviceTier} onChange={(serviceTier) => onChange({ serviceTier })} />}
       <div className="custom-model-options">
         <label className="custom-check" title="Screenshots and attached images are sent only to models that accept them."><input type="checkbox" checked={model.images} onChange={(event) => onChange({ images: event.target.checked })} /> Sees images</label>
         <label className="custom-number" title="Tokens the model can hold. Roqer keeps less tool output for a small model."><span>Context window</span><input value={model.contextWindow} inputMode="numeric" placeholder="Unknown" onChange={(event) => onChange({ contextWindow: event.target.value })} /></label>
         <label className="custom-number" title="The longest answer to ask for in one turn, thinking included. Writing a whole UI builder takes around 10,000 tokens."><span>Max output</span><input value={model.maxOutputTokens} inputMode="numeric" placeholder={format === "anthropic" ? String(DEFAULT_ANTHROPIC_MAX_OUTPUT) : "Endpoint default"} onChange={(event) => onChange({ maxOutputTokens: event.target.value })} /></label>
       </div>
     </div>}
+  </div>;
+}
+
+/**
+ * The service tier a model asks for. Standard sends nothing, so it is right for
+ * every endpoint; the others only for the models and providers that offer them,
+ * which the connection test reports on.
+ */
+function ServiceTierPicker({ tier, onChange }: {
+  tier: CustomServiceTier | undefined;
+  onChange: (tier: CustomServiceTier | undefined) => void;
+}) {
+  return <div className="custom-efforts">
+    <div className="custom-efforts-header"><span>Service tier</span></div>
+    <div className="settings-segmented" role="group" aria-label="Service tier">
+      {SERVICE_TIERS.map((entry) => <button key={entry.label} type="button" aria-pressed={tier === entry.tier} title={entry.title} onClick={() => onChange(entry.tier)}>{entry.label}</button>)}
+    </div>
+    <span className="custom-hint">{tier === undefined
+      ? "Flex is cheaper but slower; Priority is faster but costs more. Only some models and providers offer them."
+      : tier === "flex"
+        ? "Cheaper and slower, and a request can fail when the provider has no spare capacity. Test the model to see which tier answers."
+        : "Faster, and billed at a higher rate. Test the model to see which tier answers."}</span>
   </div>;
 }
 

@@ -138,9 +138,14 @@ function upstreamDetail(error: Record<string, unknown>): string | undefined {
   return `${provider} said: ${detail}`;
 }
 
-function statusHint(status: number): string {
+function statusHint(status: number, serviceTier: string | undefined): string {
   if (status === 401 || status === 403) return " Check the API key in Settings.";
   if (status === 404) return " Check the base URL and the model id in Settings.";
+  // OpenAI answers a flex request it has no capacity for with a 429, and
+  // OpenRouter never moves a flex request to a standard endpoint instead.
+  if (status === 429 && serviceTier === "flex") {
+    return " There may be no flex capacity for this model right now; wait and try again, or set its service tier to Standard in Settings.";
+  }
   if (status === 429) return " The endpoint is rate limiting this key; wait and try again.";
   return "";
 }
@@ -155,11 +160,17 @@ export async function readErrorBody(response: Response): Promise<string> {
   }
 }
 
-/** Why the endpoint refused a request, from its status and the body already read. */
-export function describeRefusal(status: number, body: string, label: string, apiKey: string | null): string {
+/** Why the endpoint refused a request, from its status, the body already read, and the service tier it asked for. */
+export function describeRefusal(
+  status: number,
+  body: string,
+  label: string,
+  apiKey: string | null,
+  serviceTier?: string,
+): string {
   const detail = redact(errorDetail(body), apiKey).slice(0, MAX_ERROR_MESSAGE_CHARACTERS);
   const explained = detail ? `: ${detail}${/[.!?]$/.test(detail) ? "" : "."}` : ".";
-  return `${label} returned status ${status}${explained}${statusHint(status)}`;
+  return `${label} returned status ${status}${explained}${statusHint(status, serviceTier)}`;
 }
 
 /** Why the endpoint refused a request, in words the user can act on. */
@@ -220,8 +231,9 @@ export function endpointRefusal(
   body: string,
   label: string,
   apiKey: string | null,
+  serviceTier?: string,
 ): Error {
-  const message = describeRefusal(response.status, body, label, apiKey);
+  const message = describeRefusal(response.status, body, label, apiKey, serviceTier);
   if (isContextOverflow(response.status, body)) return new ContextOverflowError(message);
   if (!isTransientStatus(response.status) || EXHAUSTED_ACCOUNT.test(body)) return new Error(message);
   const wait = retryAfterMs(response.headers);

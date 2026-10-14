@@ -12,6 +12,7 @@ import {
   type CustomModel,
   type CustomModelImportResult,
   type CustomModelTestResult,
+  type CustomServiceTier,
 } from "../shared/custom-providers";
 import type { ProviderModel, ProviderModelCatalog, ProviderStatus } from "../shared/provider";
 import type { TurnTransport } from "./agent-loop";
@@ -95,13 +96,15 @@ export function createCustomTransport(options: CustomTransportOptions): TurnTran
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     ...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
   };
+  // A saved Anthropic-format model never has a tier; see `takesServiceTier`.
+  const tier = options.model.serviceTier === undefined ? {} : { serviceTier: options.model.serviceTier };
   switch (options.connection.format) {
     case "anthropic":
       return new AnthropicMessagesTurns(shared);
     case "openai-responses":
-      return new OpenAiResponsesTurns(shared);
+      return new OpenAiResponsesTurns({ ...shared, ...tier });
     case "openai":
-      return new OpenAiChatTurns(shared);
+      return new OpenAiChatTurns({ ...shared, ...tier });
   }
 }
 
@@ -119,6 +122,22 @@ export function customTransportKey(options: Pick<CustomTransportOptions, "connec
 
 const TEST_TOOL = "report_ready";
 const TEST_TIMEOUT_MS = 60_000;
+
+/**
+ * What a test learned about the service tier: the one the endpoint says served
+ * it, beside the one the model asks for. A tier asked for and not served is
+ * billed at the tier that was, so that is said rather than left to the invoice.
+ */
+function tierNote(label: string, asked: CustomServiceTier | undefined, served: string | undefined): string {
+  const servedName = served === "default" || served === "standard" ? "standard" : served;
+  if (asked === undefined) {
+    return servedName === undefined || servedName === "standard" ? "" : ` ${label} served it on the ${servedName} tier.`;
+  }
+  if (servedName === undefined) return ` ${label} did not say which service tier served it.`;
+  return servedName === asked
+    ? ` ${label} served it on the ${asked} tier.`
+    : ` ${label} served it on the ${servedName} tier, not ${asked}, so this model may not offer ${asked} there.`;
+}
 
 /**
  * One small request that needs a tool call to pass.
@@ -146,12 +165,20 @@ export async function testCustomModel(options: CustomTransportOptions): Promise<
   const controller = new AbortController();
   try {
     let text = "";
+    let called = false;
+    let servedTier: string | undefined;
+    // Read to the end: the served tier arrives with the turn's completion, after its calls.
     for await (const event of transport.streamTurn(request, controller.signal)) {
-      if (event.kind === "tool-call" && event.call.name === TEST_TOOL) {
-        return { ok: true, message: `${options.model.displayName} answered and called a tool. It is ready to use.` };
-      }
+      if (event.kind === "tool-call" && event.call.name === TEST_TOOL) called = true;
+      if (event.kind === "completed") servedTier = event.serviceTier;
       if (event.kind === "delta") text += event.text;
       if (event.kind === "failed") return { ok: false, message: event.message };
+    }
+    if (called) {
+      return {
+        ok: true,
+        message: `${options.model.displayName} answered and called a tool. It is ready to use.${tierNote(options.connection.name, options.model.serviceTier, servedTier)}`,
+      };
     }
     return {
       ok: false,

@@ -24,7 +24,9 @@ import type { SecretProtector } from "./secret-protector";
  *
  * Schema 2 replaced a model's `reasoning` flag with the list of efforts it
  * takes. A schema 1 file is read as the list the flag stood for and written
- * back as schema 2 on the next change; nothing is rewritten just by reading.
+ * back as the current schema on the next change; nothing is rewritten just by
+ * reading. Schema 3 added a model's optional `serviceTier`, which a schema 2
+ * model reads as absent, so a schema 2 file needs no migration.
  */
 
 export class CustomProviderStoreError extends Error {
@@ -42,7 +44,7 @@ export type CustomProviderStoreOptions = Readonly<{
 
 type StoredConnection = CustomConnection & Readonly<{ encryptedApiKey?: string }>;
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 type StoredFile = Readonly<{ schemaVersion: typeof SCHEMA_VERSION; connections: readonly StoredConnection[] }>;
 
@@ -78,7 +80,7 @@ function migrateVersion1Connection(connection: Record<string, unknown>): Record<
 }
 
 function parseStoredFile(value: unknown): StoredFile | undefined {
-  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== SCHEMA_VERSION) ||
+  if (!isRecord(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== SCHEMA_VERSION) ||
     !Array.isArray(value.connections) || value.connections.length > MAX_CUSTOM_CONNECTIONS) return undefined;
   const fromVersion1 = value.schemaVersion === 1;
   const connections: StoredConnection[] = [];
