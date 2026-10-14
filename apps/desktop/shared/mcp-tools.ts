@@ -1,5 +1,5 @@
 import { GATEWAY_TOOL_RISK, isGatewayOperation } from "./gateway-operations";
-import { CALL_MCP_TOOL_OPERATION, LIST_MCP_TOOLS_OPERATION } from "./mcp-servers";
+import { CALL_MCP_TOOL_OPERATION, DOWNLOAD_MCP_FILE_OPERATION, LIST_MCP_TOOLS_OPERATION } from "./mcp-servers";
 import type { ToolRisk } from "./policy";
 
 /**
@@ -110,6 +110,10 @@ export const LOCAL_TOOL_RISK: Readonly<Record<string, ToolRisk>> = {
   // those tools, `call_mcp_tool`, is in no table: its risk is the one the user
   // set for that tool, which the run engine looks up per call.
   [LIST_MCP_TOOLS_OPERATION]: "read",
+  // Writes a file a server's result linked to into Roqer's own folder: a
+  // change on this computer, though not to the project, so Read only refuses
+  // it and Ask first asks.
+  [DOWNLOAD_MCP_FILE_OPERATION]: "mutation",
 };
 
 /**
@@ -225,6 +229,8 @@ const TOOL_TIMEOUT_MS: Readonly<Record<string, number>> = {
   // A third party's tool, whose worst case Roqer cannot know: generous, and
   // still bounded so a hung server does not hold the run.
   [CALL_MCP_TOOL_OPERATION]: 120_000,
+  // Up to 50 MB from wherever the link points.
+  [DOWNLOAD_MCP_FILE_OPERATION]: 120_000,
 };
 
 /**
@@ -436,6 +442,15 @@ export function summarizeToolCall(tool: string, args: Record<string, unknown>): 
     const name = typeof args.tool === "string" && args.tool !== "" ? truncate(args.tool, 64) : undefined;
     if (server === undefined) return tool;
     return `${tool} · ${name === undefined ? server : `${server}/${name}`}`;
+  }
+  // The approval names where the file comes from; the full link is in the arguments.
+  if (tool === DOWNLOAD_MCP_FILE_OPERATION) {
+    try {
+      const url = new URL(String(args.url));
+      return `${tool} · ${truncate(`${url.hostname}${url.pathname}`, 72)}`;
+    } catch {
+      return tool;
+    }
   }
   if (tool === "animation") return summarizeAnimation(args);
   if (tool === "upload_assets") return summarizeUploads(args);

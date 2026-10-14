@@ -22,6 +22,11 @@ export const EXTERNAL_MCP_TOOL_NAME = "external_mcp";
 /** The run-engine operations an `external_mcp` call travels as. */
 export const LIST_MCP_TOOLS_OPERATION = "list_mcp_tools";
 export const CALL_MCP_TOOL_OPERATION = "call_mcp_tool";
+/**
+ * Saves a file a server's result linked to, such as generated audio, so it can
+ * be uploaded to Roblox. Only links this run's results gave are fetched.
+ */
+export const DOWNLOAD_MCP_FILE_OPERATION = "download_mcp_file";
 
 export const MCP_SERVER_TRANSPORTS = ["stdio", "http"] as const;
 export type McpServerTransport = typeof MCP_SERVER_TRANSPORTS[number];

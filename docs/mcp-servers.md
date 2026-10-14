@@ -85,14 +85,25 @@ choice:
   included, until you set it.
 
 A server may mark a tool read-only or destructive. Settings shows that next to
-the tool, but Roqer never acts on it; only your choice counts. A change you
+the tool, but Roqer never acts on it by itself; only your choice counts. For a
+server with many tools, **Set to Read** sets every tool the server calls
+read-only, and that you have not set, to Read in one step. It takes the
+server's word for it, so check the list before you save. A change you
 save applies to the next call, even in a run that is already going.
 
 ## During a run
 
 The agent is offered `external_mcp` only while at least one server is turned
 on. It lists your servers and their tools first, reads a tool's description
-and arguments, then calls it. A run starts a server the first time it needs
+and arguments, then calls it. A server with more tools than one answer holds
+is listed by name, and the agent searches it by keyword for what it needs.
+
+Some servers return a link to a file they made rather than the file: an
+ElevenLabs sound is a link to an MP3. The agent can save such a file into
+Roqer's data folder (`mcp-downloads`, one folder per run, removed after a
+week) and upload it to Roblox from there. It can only download a link that a
+server's result gave in the same run, over HTTPS, up to 50 MB. A download
+counts as an Edit: Read only refuses it and Ask first asks. A run starts a server the first time it needs
 it, keeps it for the rest of the run, and stops it when the run ends, however
 it ends. Turning a server off in Settings stops new calls to it at once.
 

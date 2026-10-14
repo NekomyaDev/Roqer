@@ -217,6 +217,26 @@ export function mcpToolRows(listed: readonly McpListedTool[] | null, toolRisk: R
   return rows;
 }
 
+/**
+ * The risks with every tool the server calls read-only, and the user has not
+ * set, set to Read. Only ever run from the user's own click, and saved only
+ * when they save: the hint is the server's claim, so taking it is the user's
+ * decision, never Roqer's.
+ */
+export function withReadOnlyHints(
+  listed: readonly McpListedTool[] | null,
+  toolRisk: Readonly<Record<string, ToolRisk>>,
+): { toolRisk: Record<string, ToolRisk>; applied: number } {
+  const next: Record<string, ToolRisk> = { ...toolRisk };
+  let applied = 0;
+  for (const tool of listed ?? []) {
+    if (tool.readOnlyHint !== true || hasOwn(next, tool.name)) continue;
+    next[tool.name] = "read";
+    applied += 1;
+  }
+  return { toolRisk: next, applied };
+}
+
 /** One line per server: what it runs or calls, and only the exceptions after that. */
 export function mcpServerDetail(server: McpServerView): string {
   const target = mcpServerTarget(server);
@@ -468,6 +488,8 @@ function McpServerPage({ server, onBack, onSaved, onRemoved, onDirtyChange }: {
   const canSave = !busy && draft.name.trim() !== "" && (stdio ? draft.command.trim() !== "" : draft.url.trim() !== "");
   const showSaveBar = adding || dirty;
   const rows = mcpToolRows(listed, draft.toolRisk);
+  /** Tools the server calls read-only that the user has not set yet. */
+  const hinted = withReadOnlyHints(listed, draft.toolRisk).applied;
   const policy = NEW_TOOL_POLICIES.find((entry) => entry.policy === draft.newTools) ?? NEW_TOOL_POLICIES[0];
   const savedSecrets = saved === undefined || saved.secretNames.length === 0
     ? ""
@@ -579,6 +601,12 @@ function McpServerPage({ server, onBack, onSaved, onRemoved, onDirtyChange }: {
         <span className="custom-hint">{policy.hint}</span>
       </div>
       {test.text !== undefined && <p className={`custom-message ${test.ok ? "ok" : "error"}`}>{test.ok ? <Check size={13} /> : null} {test.text}</p>}
+      {hinted > 0 && <SettingsRow
+        title={`${hinted} ${hinted === 1 ? "tool says" : "tools say"} read-only`}
+        detail="Set them to Read, so they run without asking. This takes the server's word for it; check the list before you save."
+      >
+        <button type="button" className="small-button" onClick={() => update({ toolRisk: withReadOnlyHints(listed, draft.toolRisk).toolRisk })}>Set to Read</button>
+      </SettingsRow>}
       {rows.length === 0 && <p className="custom-empty">{listed === null
         ? "Test the server to list its tools, then set what each one may do."
         : "The server listed no tools."}</p>}

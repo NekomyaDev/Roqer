@@ -4,7 +4,7 @@ import test from "node:test";
 import type { McpServerView } from "../shared/mcp-servers";
 import type { ToolRisk } from "../shared/policy";
 import {
-  argumentsFromText, emptyMcpDraft, isMcpDraftDirty, mcpDraftFrom, mcpSaveRequest, mcpServerDetail, mcpToolRows, type McpDraft,
+  argumentsFromText, emptyMcpDraft, isMcpDraftDirty, mcpDraftFrom, mcpSaveRequest, mcpServerDetail, mcpToolRows, withReadOnlyHints, type McpDraft,
 } from "./mcp-server-settings";
 
 const stdioServer = (changes: Partial<McpServerView> = {}): McpServerView => ({
@@ -130,4 +130,28 @@ test("a server's row says what it runs or calls, and only the exceptions after t
   const long = mcpServerDetail(stdioServer({ toolRisk: {}, args: ["x".repeat(200)] }));
   assert.equal(long.length, 80);
   assert.ok(long.endsWith("…"));
+});
+
+test("Set to Read takes only the tools the server calls read-only, and keeps every choice already made", () => {
+  const listed = [
+    { name: "list_agents", description: "", readOnlyHint: true },
+    { name: "get_voice", description: "", readOnlyHint: true },
+    { name: "delete_agent", description: "", destructiveHint: true },
+    { name: "text_to_speech", description: "" },
+  ];
+  const result = withReadOnlyHints(listed, { get_voice: "irreversible" });
+  assert.deepEqual(result, { toolRisk: { get_voice: "irreversible", list_agents: "read" }, applied: 1 });
+  assert.equal(withReadOnlyHints(null, {}).applied, 0, "nothing before a test has listed the tools");
+});
+
+test("an OAuth URL server saves its sign-in choice and client ID, and a program server never does", () => {
+  const draft: McpDraft = { ...emptyMcpDraft(), name: "elevenlabs", transport: "http", url: "https://api.us.elevenlabs.io/v1/mcp", oauth: true, oauthClientId: " my-app " };
+  const request = mcpSaveRequest(draft);
+  assert.equal(request.ok, true);
+  if (request.ok) {
+    assert.equal(request.save.auth, "oauth");
+    assert.equal(request.save.oauthClientId, "my-app");
+  }
+  const program = mcpSaveRequest({ ...draft, transport: "stdio", command: "npx" });
+  assert.equal(program.ok && program.save.auth, undefined);
 });

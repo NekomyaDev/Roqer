@@ -303,6 +303,7 @@ export function activityLabel(tool: string, target: string | null, past: boolean
     const where = target === null ? "your MCP servers" : target.split("/")[0];
     return past ? `Listed tools on ${where}` : `Listing tools on ${where}`;
   }
+  if (tool === "download_mcp_file") return past ? "Downloaded a file an MCP server made" : "Downloading a file an MCP server made";
   if (tool === "call_mcp_tool") {
     if (target === null) return past ? "Used an MCP tool" : "Using an MCP tool";
     return past ? `Used ${target}` : `Using ${target}`;
