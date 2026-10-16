@@ -185,7 +185,7 @@ export function messagesSince(context: ConversationContext, lastPrompt: string):
     const reply = context.messages[next];
     // The same words sent again later and answered by another provider are not
     // where the session left off; keep looking further back.
-    if (reply?.role === "assistant" && reply.run !== undefined && reply.claude !== true) continue;
+    if (reply?.role === "assistant" && reply.claude === false) continue;
     if (reply?.role === "assistant") next += 1;
     return context.messages.slice(next);
   }

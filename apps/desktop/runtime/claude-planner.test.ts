@@ -1267,6 +1267,8 @@ test("Claude's usage is read from a result's running totals, a malformed figure 
     modelUsage: { "claude-opus-5-5": entry({ cacheReadInputTokens: 1.5 }), "claude-haiku-4-5": entry({ outputTokens: "9" }) },
   }), { totals: { inputTokens: 120, cacheWriteTokens: 240 } }, "a malformed figure drops that total, not the rest");
   assert.deepEqual(claudeResultUsage({ type: "result", subtype: "success" }), { totals: {} });
+  assert.deepEqual(claudeResultUsage({ type: "result", subtype: "success", total_cost_usd: 0, modelUsage: {} }),
+    { totals: { costUsd: 0 } }, "a result that named no model said nothing about tokens");
   assert.equal(claudeResultUsage({ type: "result", parent_tool_use_id: "toolu_1", total_cost_usd: 1 }), null, "only the main agent's results count");
   assert.equal(claudeResultUsage({ type: "assistant", total_cost_usd: 1 }), null);
 
@@ -1295,6 +1297,26 @@ test("Claude's usage is read from a result's running totals, a malformed figure 
   assert.deepEqual(unpriced.observe(result(10, 5, null, { num_turns: undefined })), {
     inputTokens: 10, cacheReadTokens: 1_500, cacheWriteTokens: 10, outputTokens: 5, costUsd: 1,
   }, "a cost seen earlier in the run still counts; requests nobody counted are absent");
+
+  // Only a result that said what the conversation has spent is worth saving
+  // for the next process: zeros saved over a conversation that spent more
+  // would be charged to whatever resumed it.
+  const fresh = new ClaudeRunUsage({ inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 0 });
+  assert.equal(fresh.totalsRecorded, false, "nothing to save before the first result");
+  assert.equal(fresh.observe({ type: "result", subtype: "error_during_execution", num_turns: 0, total_cost_usd: 0, modelUsage: {} }), null,
+    "an error result that named no model is not a run's usage");
+  assert.equal(fresh.totalsRecorded, false, "a turn that ended without the totals leaves them unsaved");
+  fresh.observe(result(10, 5, 1));
+  assert.equal(fresh.totalsRecorded, true);
+
+  // A resumed conversation nobody recorded: the first result is the whole
+  // conversation's, so it is the baseline rather than this run's usage.
+  const resumed = new ClaudeRunUsage({ inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 0 }, false);
+  assert.equal(resumed.observe(result(1_000, 500, 9)), null, "the conversation's figures are not this run's");
+  assert.equal(resumed.totalsRecorded, true, "and they are saved, so the next run knows them");
+  assert.deepEqual(resumed.observe(result(1_010, 505, 9.5)), {
+    inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 5, requests: 4, costUsd: 0.5,
+  }, "a later turn of the same run reports what it added");
 });
 
 test("Claude reports a run's usage across its notes, and a kept process's next run reports only its own", async () => {
@@ -1542,6 +1564,65 @@ test("Claude resumes a chat's saved conversation in a new process after a failed
     const second = provider.launches[1].args;
     assert.equal(argAfter(second, "--resume"), sessionId, "the new process continues the same conversation");
     assert.equal(provider.inputs[1], "Try again.", "nothing is replayed: the session holds the conversation");
+    await sessions.closeAll();
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+test("a resumed session reports its own run's usage, not the whole conversation's", async () => {
+  const fixture = await savedSessionFixture();
+  try {
+    const sessions = new ProviderSessionStore<ClaudeSession>();
+    const provider = savingLauncher();
+    // Claude Code counts every turn of a session it resumes, so each result
+    // here carries the conversation's totals, not the turn's.
+    let turn = 0;
+    provider.answerWith((_text, child) => {
+      turn += 1;
+      child.writeLine({
+        type: "result", subtype: "success", is_error: false, result: `Answer ${turn}`, num_turns: 3,
+        total_cost_usd: turn * 0.5,
+        modelUsage: {
+          "claude-opus-5-5": {
+            inputTokens: turn * 10, outputTokens: turn * 5,
+            cacheReadInputTokens: turn * 1_000, cacheCreationInputTokens: turn * 100,
+          },
+        },
+      });
+    });
+    const base = { ...PLANNER_DEFAULTS, launcher: provider.launcher, chatId: "chat-1", sessions, registry: fixture.registry };
+    const reported: RunUsage[] = [];
+    const { context } = makeContext(new AbortController());
+    const reporting: PlannerContext = { ...context, runUsage: (usage) => reported.push(usage) };
+
+    assert.equal(await createClaudePlanner(base).run(reporting), "Answer 1");
+    const sessionId = argAfter(provider.launches[0].args, "--session-id")!;
+    await fixture.save(sessionId);
+    const spent = { inputTokens: 10, cacheReadTokens: 1_000, cacheWriteTokens: 100, outputTokens: 5, costUsd: 0.5 };
+    assert.deepEqual(reported, [{ ...spent, requests: 3 }]);
+    assert.deepEqual((await fixture.registry.get("chat-1"))?.usage, spent, "what the conversation has spent is saved with it");
+
+    // A new process resumes the saved conversation: its first result repeats
+    // everything above, and only what it added is this run's.
+    await sessions.closeAll();
+    reported.length = 0;
+    assert.equal(await createClaudePlanner(base).run(followUp(reporting, "Answer 1", "Try again.")), "Answer 2");
+    assert.equal(argAfter(provider.launches[1].args, "--resume"), sessionId);
+    assert.deepEqual(reported, [{ ...spent, requests: 3 }], "the turns before this run are not charged to it");
+    assert.deepEqual((await fixture.registry.get("chat-1"))?.usage,
+      { inputTokens: 20, cacheReadTokens: 2_000, cacheWriteTokens: 200, outputTokens: 10, costUsd: 1 });
+
+    // A conversation saved before its totals were recorded: the run reports
+    // none rather than the whole conversation's as its own.
+    await sessions.closeAll();
+    await fixture.registry.update("chat-1", { sessionId, usage: null });
+    reported.length = 0;
+    assert.equal(await createClaudePlanner(base).run(followUp(reporting, "Answer 2", "Again.")), "Answer 3");
+    assert.deepEqual(reported, [], "no figures rather than wrong ones");
+    assert.deepEqual((await fixture.registry.get("chat-1"))?.usage,
+      { inputTokens: 30, cacheReadTokens: 3_000, cacheWriteTokens: 300, outputTokens: 15, costUsd: 1.5 },
+      "and the next run has them again");
     await sessions.closeAll();
   } finally {
     await fixture.dispose();

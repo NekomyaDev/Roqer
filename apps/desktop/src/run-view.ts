@@ -8,7 +8,7 @@ import type { RunQuestion } from "../shared/question";
 import type { RunDecision } from "../shared/run-digest";
 import type { RunTask } from "../shared/tasks";
 import {
-  MAX_INLINE_EVIDENCE_IMAGES, MAX_RECORDED_EVIDENCE_IMAGES, RUN_EVENT_SCHEMA_VERSION,
+  MAX_INLINE_EVIDENCE_IMAGES, MAX_RECORDED_EVIDENCE_IMAGES, MAX_TRANSCRIPT_ENTRIES, RUN_EVENT_SCHEMA_VERSION,
   type RunChange, type RunEvent, type RunEvidence, type RunFailure,
   type RunOutcome, type RunRecord, type RunUsage, type ToolProposal, type TranscriptEntry,
 } from "../shared/run-events";
@@ -537,11 +537,6 @@ export function previewsNotShown(evidence: readonly RunEvidence[], category?: Pi
 }
 
 /**
- * Compact a finished run for persistence. Live-only detail — progress lines and
- * the prose, which is kept as the message text — is dropped, so chat history
- * does not grow with every run.
- */
-/**
  * A run read in order: what the model said, and the steps it took between.
  * Text segments are offsets into the run's `text` (a recorded run's segments
  * carry their own text), so a streaming stretch can be sliced at render time.
@@ -591,7 +586,12 @@ function recordTranscript(view: RunView): TranscriptEntry[] | undefined {
       entries.push({ step: "note" });
     }
   });
-  return entries;
+  // More steps than a record may carry: the run keeps no transcript at all,
+  // and its answer is read from the message text with the steps after it, as a
+  // record written before transcripts were kept is. Keeping only the entries
+  // that fit would drop the prose that did not, and a record over the bound is
+  // refused on load, which would cost the run its steps and changes too.
+  return entries.length > MAX_TRANSCRIPT_ENTRIES ? undefined : entries;
 }
 
 /**
@@ -628,6 +628,12 @@ export function recordTranscriptSegments(record: RunRecord): Array<
   return segments;
 }
 
+/**
+ * Compact a finished run for persistence. Live-only detail — progress lines,
+ * pending calls, and the pictures past the record's budget — is dropped. The
+ * prose is kept twice over: as the message text, and in the transcript, which
+ * places it between the steps it was written around.
+ */
 export function toRunRecord(view: RunView): RunRecord | null {
   if (view.outcome === null) return null;
   const transcript = recordTranscript(view);

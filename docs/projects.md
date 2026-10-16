@@ -9,7 +9,9 @@ rather than a replayed summary of it.
 Each Claude chat has one Claude Code conversation (a "session"). Roqer
 records which session belongs to which chat in `claude-sessions.json` in its
 data folder (on Windows, `%APPDATA%\Roqer`). The file holds only the session
-id, the chat's last prompt, its Studio place and its model.
+id, the chat's last prompt, its Studio place, its model, and what the
+conversation has spent so far, which is how a resumed run reports its own
+tokens and cost rather than the whole chat's.
 
 The conversation itself is kept by **Claude Code**, not Roqer: **every Claude
 chat's full transcript is saved under `~/.claude/projects/`** (or
@@ -20,6 +22,9 @@ reasoning, and the results of its tool calls, such as script source it read.
 Before this, Roqer started Claude Code with `--no-session-persistence` and
 nothing was kept there.
 
+- Deleting a chat in Roqer deletes its transcript and its row in
+  `claude-sessions.json` with it. Deleting a project does the same for every
+  chat in it.
 - Claude Code deletes transcripts older than its `cleanupPeriodDays` setting
   (30 days unless you change it). When a chat's transcript is gone, Roqer
   notices, forgets the session, and starts a new one from the chat's history.

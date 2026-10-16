@@ -17,7 +17,7 @@ import {
   type AssetAttachment, type ChatMessage, type WorkspaceState,
 } from "./model";
 import {
-  cancelRun, cancelRunStart, compactChatSessions, getStudioStatus,
+  cancelRun, cancelRunStart, compactChatSessions, forgetChatSessions, getStudioStatus,
   hasDesktopRuntime, loadWorkspace, pickAsset, getStorageStatus, recoverWorkspace, exportWorkspace, releaseAttachments,
   answerRunQuestion, attachImage, attachVideo, ATTACHABLE_IMAGE_TYPES, ATTACHABLE_VIDEO_TYPES, selectClip, steerRun, compactChat,
   getBridgeState, restartBridge, subscribeToBridge, type McpServerState,
@@ -187,7 +187,7 @@ function toConversationMessages(messages: readonly ChatMessage[]): ConversationM
       ...(digest === undefined || digestIsEmpty(digest) ? {} : { run: digest }),
       ...(role === "user" && pictures + files > 0 ? { attachments: { pictures, files } } : {}),
       ...(note === true && role === "user" ? { note: true as const } : {}),
-      ...(role === "assistant" && run?.planner === "claude-code" ? { claude: true as const } : {}),
+      ...(role === "assistant" && run !== undefined ? { claude: run.planner === "claude-code" } : {}),
     };
   });
 }
@@ -695,6 +695,14 @@ function App() {
   const canCompact = !isRunning && compactingChatId === null &&
     (modelCompact ? (selectedChat?.messages.length ?? 0) > 0 : compactTo > compactedFrom);
 
+  /** Forget a chat's context reading, once a compact has made the figure untrue. */
+  const forgetContextReading = (chatId: string) => setContextReadings((current) => {
+    if (!current.has(chatId)) return current;
+    const next = new Map(current);
+    next.delete(chatId);
+    return next;
+  });
+
   /**
    * Fold the chat's older messages into a record the model reads in their place.
    * Only the model's view changes: every message stays on screen. The main process
@@ -714,11 +722,20 @@ function App() {
         const result = await compactChat(projectId, chatId);
         if (result.noSession !== true) {
           setCompactNotice({ chatId, text: result.message });
+          // The reading described the context Claude compacted away, so the
+          // meter shows nothing rather than a figure beside a notice that
+          // contradicts it, until the next run reports.
+          if (result.ok) forgetContextReading(chatId);
           return;
         }
         setCompactNotice(null);
         // No saved Claude conversation: the window's own record stands in.
-        if (compactTo <= compactedFrom) return;
+        if (compactTo <= compactedFrom) {
+          // Nothing saved and nothing left to fold: say so rather than leave
+          // the button looking like it did something.
+          setCompactNotice({ chatId, text: "This chat has nothing to compact yet." });
+          return;
+        }
       }
       if (hasDesktopRuntime() && !(await compactChatSessions(chatId))) return;
       const summary = compactChatSummary(
@@ -734,12 +751,7 @@ function App() {
       setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary, ...usage }));
       // The reading described the context before the compact. The meter shows
       // nothing rather than a figure the compact made untrue, until the next run reports.
-      setContextReadings((current) => {
-        if (!current.has(chatId)) return current;
-        const next = new Map(current);
-        next.delete(chatId);
-        return next;
-      });
+      forgetContextReading(chatId);
       const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
       setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
     } finally {
@@ -1031,10 +1043,15 @@ function App() {
    * report back to, so the run is abandoned first. The same applies to the open
    * chat, whose live view would otherwise stay on screen above a different
    * conversation.
+   *
+   * What the chat kept outside the window goes with it: a saved Claude session
+   * and Claude Code's transcript of the chat would otherwise outlive the chat
+   * the user deleted.
    */
   const removeChat = (projectId: string, chatId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
     resetRun(chatId, true);
+    void forgetChatSessions(chatId);
     setWorkspace((current) => deleteChat(current, projectId, chatId));
     clearComposer();
     setAttachments([]);
@@ -1043,7 +1060,10 @@ function App() {
 
   const removeProject = (projectId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
-    for (const chat of workspace.projects.find((project) => project.id === projectId)?.chats ?? []) resetRun(chat.id, true);
+    for (const chat of workspace.projects.find((project) => project.id === projectId)?.chats ?? []) {
+      resetRun(chat.id, true);
+      void forgetChatSessions(chat.id);
+    }
     setWorkspace((current) => deleteProject(current, projectId));
     setExpandedProjects((current) => {
       const next = new Set(current);

@@ -6,7 +6,8 @@ import type {
   RunChange, RunEvent, RunEventBody, RunEvidence, RunOutcome, RunUsage, ToolProposal,
 } from "../shared/run-events";
 import {
-  BLENDER_MODEL_LABEL, BLENDER_PREVIEW_TITLE, isRunRecord, MAX_EVIDENCE_IMAGE_CHARACTERS, withoutMalformedUsage,
+  BLENDER_MODEL_LABEL, BLENDER_PREVIEW_TITLE, isRunRecord, MAX_EVIDENCE_IMAGE_CHARACTERS, MAX_TRANSCRIPT_ENTRIES,
+  withoutMalformedUsage,
 } from "../shared/run-events";
 import {
   activitySteps, applyRunEvent, createRunView, describeActivityState, describeOutcome, evidenceImages, previewsNotShown,
@@ -997,6 +998,28 @@ test("prose and steps are read in the order they happened, live and recorded", (
   assert.deepEqual(recorded.map((segment) => segment.type === "text" ? segment.text : segment.steps.map((step) => step.key)),
     ["Let me look.", ["call-0", "note-0", "call-1"], "\n\nFound it."]);
   assert.equal(recordTranscriptSegments({ ...record, transcript: undefined }), null, "older records keep their old layout");
+});
+
+test("a run with more steps than a record may carry keeps no transcript", () => {
+  const view = fold(stream(
+    started,
+    { type: "message-delta", text: "Working." },
+    { type: "run-completed", outcome: "completed", summary: "Done." },
+  ));
+  // One past the bound, which a record is refused for carrying.
+  const callIds = Array.from({ length: MAX_TRANSCRIPT_ENTRIES }, (_, index) => `call-${index}`);
+  const crowded: RunView = {
+    ...view,
+    timeline: [...view.timeline, ...callIds.map((callId) => ({ type: "tool" as const, key: callId, callId }))],
+    activities: [...view.activities, ...callIds.map((callId) => ({
+      callId, tool: "get_place_info", summary: "1 place", risk: "read" as const, state: "done" as const, durationMs: 1,
+    }))],
+  };
+  const record = toRunRecord(crowded)!;
+  assert.equal(record.transcript, undefined, "no transcript rather than one the next load refuses");
+  assert.ok(isRunRecord(record), "and the rest of the record is still kept");
+  assert.equal(record.toolCalls.length, MAX_TRANSCRIPT_ENTRIES);
+  assert.equal(recordTranscriptSegments(record), null, "its answer is read the way an older record's is");
 });
 
 test("a note sent mid-sentence does not split the reply's prose", () => {

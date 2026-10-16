@@ -251,6 +251,11 @@ const chats = {
    */
   compact: (chatId: string): Promise<boolean> => ipcRenderer.invoke("chat:compact", chatId),
   /**
+   * Forget what a deleted chat kept outside the window: its provider
+   * conversations, its saved Claude session, and Claude Code's transcript of it.
+   */
+  forget: (chatId: string): Promise<boolean> => ipcRenderer.invoke("chat:forget", chatId),
+  /**
    * Compact the chat's saved Claude conversation now, as `/compact` does.
    * `noSession` when there is none to compact.
    */

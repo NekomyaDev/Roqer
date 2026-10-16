@@ -65,7 +65,7 @@ import {
 } from "../runtime/client-installer";
 import { ClientVersionReader } from "../runtime/client-version";
 import { resolveCodexExecutable } from "../runtime/codex-executable";
-import { compactClaudeChat, createClaudePlanner, type ClaudeSession } from "../runtime/claude-planner";
+import { claudeSessionFile, compactClaudeChat, createClaudePlanner, type ClaudeSession } from "../runtime/claude-planner";
 import { ClaudeSessionRegistry } from "../runtime/claude-session-registry";
 import { AntigravityClient, ANTIGRAVITY_SIGN_IN_HOSTS } from "../runtime/antigravity-cli";
 import { resolveAntigravityExecutable } from "../runtime/antigravity-executable";
@@ -1471,7 +1471,7 @@ const compactionStop = new AbortController();
  * saved Claude conversation, so the window compacts it with its own record instead.
  */
 async function compactChat(event: IpcMainInvokeEvent, payload: unknown): Promise<ModelCompaction> {
-  if (!isTrusted(event.sender)) return { ok: false, message: "This window may not compact a chat." };
+  if (!isTrusted(event.sender) || shuttingDown) return { ok: false, message: "This window may not compact a chat." };
   if (!isRecord(payload) || typeof payload.chatId !== "string" || typeof payload.projectId !== "string") {
     return { ok: false, message: "Choose a chat to compact." };
   }
@@ -2172,6 +2172,34 @@ async function compactChatSessions(event: IpcMainInvokeEvent, chatId: unknown): 
   return true;
 }
 
+/**
+ * Forget everything a deleted chat keeps outside the window: the provider
+ * conversations it holds, its saved Claude session, and Claude Code's own
+ * transcript of it.
+ *
+ * A chat the user deleted takes its conversation with it. The transcript is
+ * the chat itself: its messages, the model's replies, and the results of
+ * every tool call it made. Claude Code keeps it for weeks unless it is removed
+ * here. The window cancels a run on the chat before asking, and the process is
+ * closed here so nothing writes the transcript after it is gone.
+ */
+async function forgetChat(event: IpcMainInvokeEvent, chatId: unknown): Promise<boolean> {
+  if (!isTrusted(event.sender) || typeof chatId !== "string" || chatId === "" || chatId.length > 1_000) return false;
+  const registry = claudeSessionRegistry();
+  const saved = await registry.get(chatId);
+  const live = claudeSessions.take(chatId);
+  if (live !== undefined) await live.close().catch(() => undefined);
+  await registry.forget(chatId);
+  if (saved !== undefined) {
+    const transcript = claudeSessionFile(app.getPath("userData"), saved.sessionId);
+    await fs.promises.rm(transcript, { force: true }).catch(() => undefined);
+  }
+  antigravitySessions.drop(chatId);
+  codexThreads.drop(chatId);
+  customConversations.drop(chatId);
+  return true;
+}
+
 function respondToRun(event: IpcMainInvokeEvent, payload: unknown): boolean {
   if (!isTrusted(event.sender) || !isRecord(payload)) return false;
   const { runId, callId, decision } = payload;
@@ -2648,6 +2676,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("chat:compact-model", compactChat);
   ipcMain.handle("run:start", startRun);
   ipcMain.handle("chat:compact", compactChatSessions);
+  ipcMain.handle("chat:forget", forgetChat);
   ipcMain.handle("run:respond", respondToRun);
   ipcMain.handle("run:answer", answerRun);
   ipcMain.handle("run:steer", steerRun);

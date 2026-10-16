@@ -81,6 +81,15 @@ export async function compactChatSessions(chatId: string): Promise<boolean> {
   return window.workbenchDesktop?.chats.compact(chatId) ?? false;
 }
 
+/**
+ * Tell the main process a chat was deleted, so what it kept outside the window
+ * goes with it: provider conversations, the saved Claude session, and Claude
+ * Code's transcript of the chat.
+ */
+export async function forgetChatSessions(chatId: string): Promise<boolean> {
+  return window.workbenchDesktop?.chats.forget(chatId) ?? false;
+}
+
 export async function releaseAttachments(ids: string[]): Promise<void> {
   await window.workbenchDesktop?.assets.release(ids);
 }

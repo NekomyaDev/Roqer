@@ -240,12 +240,29 @@ test("a prompt repeated on another provider is not where the saved Claude sessio
       { role: "user" as const, text: "yes" },
       { role: "assistant" as const, text: "Claude did it.", run: ran, claude: true as const },
       { role: "user" as const, text: "also make the door red" },
-      { role: "assistant" as const, text: "Codex made it red.", run: ran },
+      { role: "assistant" as const, text: "Codex made it red.", run: ran, claude: false },
       { role: "user" as const, text: "yes" },
-      { role: "assistant" as const, text: "Codex did it.", run: ran },
+      { role: "assistant" as const, text: "Codex did it.", run: ran, claude: false },
     ],
   };
   // Claude saw only the first "yes": everything after its reply is new to it.
   assert.deepEqual(messagesSince(context, "yes")?.map((message) => message.text),
     ["also make the door red", "Codex made it red.", "yes", "Codex did it."]);
+});
+
+test("another provider is told apart by who answered, not by whether its run left a digest", () => {
+  // A run that changed nothing has an empty digest, which the renderer leaves
+  // out; only the flag says who wrote the reply.
+  const context = {
+    truncated: false,
+    messages: [
+      { role: "user" as const, text: "continue" },
+      { role: "assistant" as const, text: "Claude read the script.", claude: true },
+      { role: "user" as const, text: "continue" },
+      { role: "assistant" as const, text: "Codex read it too.", claude: false },
+    ],
+  };
+  assert.deepEqual(messagesSince(context, "continue")?.map((message) => message.text),
+    ["continue", "Codex read it too."]);
+  assert.match(buildResumePrompt(context, "Now change it.", "continue"), /since your last turn/);
 });

@@ -159,8 +159,13 @@ function systemPrompt(options: ClaudePlannerOptions, autoPlaytest: boolean): str
 /**
  * The saved Claude Code session a process continues, or starts under a fixed
  * id so that the next process can resume it.
+ *
+ * `usage` is what the saved conversation had already spent, for a resumed
+ * session whose totals were recorded. Absent or null, the process cannot tell
+ * the conversation's totals from its own until its first result says what
+ * they are.
  */
-export type SessionRef = { id: string; resume: boolean };
+export type SessionRef = { id: string; resume: boolean; usage?: ClaudeUsageTotals | null };
 
 /**
  * Write the system prompt beside the MCP config rather than onto the command
@@ -337,8 +342,11 @@ export function claudeResultUsage(message: JsonRecord): { totals: Partial<Claude
   if (message.type !== "result" || message.parent_tool_use_id != null) return null;
   const totals: Partial<ClaudeUsageTotals> = {};
   const models = message.modelUsage;
-  if (isRecord(models)) {
-    const entries = Object.values(models);
+  const entries = isRecord(models) ? Object.values(models) : [];
+  // A result that named no model said nothing about tokens. Summing no models
+  // would read as zero, which a conversation measuring itself from nothing
+  // would take for the truth.
+  if (entries.length > 0) {
     const sum = (field: string): number | undefined => {
       let total = 0;
       for (const entry of entries) {
@@ -364,21 +372,52 @@ export function claudeResultUsage(message: JsonRecord): { totals: Partial<Claude
 }
 
 /**
- * One run's share of a Claude Code process's running totals.
+ * The totals a result gave, when it gave every one of them.
  *
- * A kept process carries the totals of every earlier run in the chat, so the
- * run reports what they grew by since it began. A figure that went down is a
- * zeroed error result, not a refund, and is ignored. Nothing is reported until
- * a result has given both the input and the output totals.
+ * A partial reading cannot stand in for a conversation's totals: a missing
+ * figure read as nothing would make the next run's share of it look larger
+ * than it was.
+ */
+export function completeUsageTotals(reading: Partial<ClaudeUsageTotals> | undefined): ClaudeUsageTotals | null {
+  if (reading === undefined) return null;
+  const { inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens, costUsd } = reading;
+  if (inputTokens === undefined || cacheReadTokens === undefined || cacheWriteTokens === undefined ||
+    outputTokens === undefined || costUsd === undefined) return null;
+  return { inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens, costUsd };
+}
+
+/**
+ * One run's share of a Claude Code conversation's running totals.
+ *
+ * A kept or resumed process carries the totals of every earlier run in the
+ * chat, so the run reports what they grew by since it began. A figure that
+ * went down is a zeroed error result, not a refund, and is ignored. Nothing is
+ * reported until a result has given both the input and the output totals.
  */
 export class ClaudeRunUsage {
-  private readonly baseline: ClaudeUsageTotals;
+  private baseline: ClaudeUsageTotals | null;
   private readonly seen = new Set<keyof ClaudeUsageTotals>();
   private requests: number | undefined;
 
-  /** `totals` is the process's own record, advanced in place for the next run. */
-  constructor(private readonly totals: ClaudeUsageTotals) {
-    this.baseline = { ...totals };
+  /**
+   * `totals` is the conversation's own record, advanced in place for the next
+   * run. `baselineKnown` is false when they are not what Claude Code will
+   * report, in which case the first result sets them and this run reports
+   * nothing rather than the whole conversation's figures.
+   */
+  constructor(private readonly totals: ClaudeUsageTotals, baselineKnown = true) {
+    this.baseline = baselineKnown ? { ...totals } : null;
+  }
+
+  /**
+   * Whether a result has said what the conversation's totals are, so they are
+   * worth saving for the next process to measure itself against. False until
+   * one has: a turn that ended without them leaves the totals as they were,
+   * and a zero saved over a conversation that spent more would be charged to
+   * whatever resumed it.
+   */
+  get totalsRecorded(): boolean {
+    return this.baseline !== null && this.seen.has("inputTokens") && this.seen.has("outputTokens");
   }
 
   /** Fold in one message; the run's usage so far when it was a result that said enough, else null. */
@@ -392,7 +431,16 @@ export class ClaudeRunUsage {
     }
     if (reading.requests !== undefined) this.requests = (this.requests ?? 0) + reading.requests;
     if (!this.seen.has("inputTokens") || !this.seen.has("outputTokens")) return null;
-    const grown = (name: keyof ClaudeUsageTotals) => this.totals[name] - this.baseline[name];
+    if (this.baseline === null) {
+      // The totals of a resumed conversation nobody recorded: this result
+      // covers every turn it ever had, so it becomes the baseline and this
+      // result reports nothing. Another result in the same run, from a turn
+      // started for a note, reports what it grew by from here.
+      this.baseline = { ...this.totals };
+      return null;
+    }
+    const base = this.baseline;
+    const grown = (name: keyof ClaudeUsageTotals) => this.totals[name] - base[name];
     return {
       inputTokens: grown("inputTokens"),
       ...(this.seen.has("cacheReadTokens") ? { cacheReadTokens: grown("cacheReadTokens") } : {}),
@@ -552,13 +600,22 @@ export class ClaudeSession {
   /** The context window Claude Code last reported for that model, kept for the next run. */
   contextWindow: number | null = null;
   /**
-   * Claude Code's running usage totals for this process, as of its latest
-   * result. They start from nothing, since the process never resumes a saved
-   * session, and each run reports only what they grew by while it ran.
+   * Claude Code's running usage totals for the conversation this process
+   * holds, as of its latest result. Each run reports only what they grew by
+   * while it ran. A new conversation starts from nothing; a resumed one starts
+   * from the totals saved with it, since Claude Code counts every earlier turn
+   * of a session it resumes.
    */
   readonly usageTotals: ClaudeUsageTotals = {
     inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 0,
   };
+  /**
+   * Whether `usageTotals` is what Claude Code will report. False for a resumed
+   * session whose totals were not saved: until a result says what they are, a
+   * run cannot tell its own usage from the whole conversation's, and reports
+   * none rather than the conversation's figures as its own.
+   */
+  usageTotalsKnown = true;
   /** Skill documents delivered into this process's conversation and still in it. */
   readonly skills: SkillToolRunner;
   /** The saved Claude Code session this process writes to, or null when none is kept. */
@@ -611,6 +668,10 @@ export class ClaudeSession {
       child = await options.launcher.launch(buildArguments(options, configPath, systemPromptPath, ref, slashCommands));
       session = new ClaudeSession(key, child, server, workingDirectory, createSkillToolRunner(options.skillLibrary));
       session.sessionId = ref?.id ?? null;
+      if (ref?.resume === true) {
+        if (ref.usage == null) session.usageTotalsKnown = false;
+        else Object.assign(session.usageTotals, ref.usage);
+      }
       session.attach();
       if (signal.aborted) throw new Error("Run was cancelled.");
       return session;
@@ -937,6 +998,14 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
           const usage = runUsage?.observe(message);
           const perRequest = requestLog.snapshot();
           if (usage) context.runUsage(perRequest === undefined ? usage : { ...usage, perRequest });
+          if (runUsage?.totalsRecorded === true && session?.sessionId != null && registry !== undefined) {
+            // The totals now match what Claude Code reports for this session,
+            // so the next process to resume it can tell its own run apart.
+            session.usageTotalsKnown = true;
+            void registry.store.update(registry.chatId, {
+              sessionId: session.sessionId, usage: { ...session.usageTotals },
+            });
+          }
           if (session !== undefined) {
             session.contextWindow = claudeContextWindow(message, [session.mainModel, contextReading?.model ?? null]) ?? session.contextWindow;
           }
@@ -957,6 +1026,10 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
             ended();
             return;
           }
+          // A turn that ended without taking the notes leaves its wait behind:
+          // cleared here, so the run waits one more turn for them rather than
+          // however many turns Claude Code chooses to start.
+          if (noteTurn !== null) clearTimeout(noteTurn);
           noteTurn = setTimeout(() => {
             noteTurn = null;
             // Never started: the run ends, its unread notes are shown as not
@@ -997,7 +1070,8 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
         }
         if (session === undefined && saved !== undefined) {
           session = await ClaudeSession.open(
-            options, key, context.autoPlaytest, context.signal, { id: saved.sessionId, resume: true },
+            options, key, context.autoPlaytest, context.signal,
+            { id: saved.sessionId, resume: true, usage: saved.usage },
           );
           opening = "resumed";
         }
@@ -1011,7 +1085,7 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
         // but the model.
         if (opening === "live") context.progress(waitingLabel);
 
-        runUsage = new ClaudeRunUsage(session.usageTotals);
+        runUsage = new ClaudeRunUsage(session.usageTotals, session.usageTotalsKnown);
         session.bind({
           invoke: async (name, args) => {
             requestLog.toolCalled(requestToolLabel(name, args));
@@ -1094,6 +1168,7 @@ export type ClaudeCompaction =
 
 /** How long a compaction may take; summarizing a full context is one long model call. */
 const COMPACT_TIMEOUT_MS = 10 * 60_000;
+const COMPACT_STOPPED = "Compacting was stopped. The conversation is unchanged.";
 
 /**
  * Compact one chat's saved conversation now, the way `/compact` does in
@@ -1108,6 +1183,8 @@ const COMPACT_TIMEOUT_MS = 10 * 60_000;
 export async function compactClaudeChat(
   options: ClaudePlannerOptions & { chatId: string; registry: ClaudeSessionRegistry; signal?: AbortSignal },
 ): Promise<ClaudeCompaction> {
+  // Already stopping: a compaction started now would outlive what asked for it.
+  if (options.signal?.aborted === true) return { ok: false, message: COMPACT_STOPPED };
   const saved = await options.registry.get(options.chatId);
   if (saved === undefined || !(await savedSessionExists(options.cwd, saved.sessionId))) {
     // Claude Code clears old transcripts itself; a record of one it no longer
@@ -1122,12 +1199,28 @@ export async function compactClaudeChat(
   if (live !== undefined) await live.close();
 
   const controller = new AbortController();
-  // Stopping (Roqer quitting) closes the compaction's process with it.
-  options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
+  // Stopping (Roqer quitting) closes the compaction's process with it. The
+  // listener is dropped when this compaction ends: the signal it listens to is
+  // the app's own and outlives every compaction.
+  const stop = () => controller.abort();
+  options.signal?.addEventListener("abort", stop, { once: true });
+  const forget = () => options.signal?.removeEventListener("abort", stop);
   const session = await ClaudeSession.open(
     { ...options, model: saved.model ?? options.model }, "compact", false, controller.signal,
-    { id: saved.sessionId, resume: true }, true,
-  );
+    { id: saved.sessionId, resume: true, usage: saved.usage }, true,
+  ).catch((error: unknown) => {
+    forget();
+    throw error;
+  });
+  // Compacting spends tokens on the saved conversation, so the totals the next
+  // run measures itself against are recorded here too. Whatever ends the
+  // compaction without recording them leaves them cleared rather than stale:
+  // the next run then reports no usage instead of counting this one as its own.
+  let recorded = false;
+  const recordUsage = (usage: ClaudeUsageTotals | null) => {
+    recorded = true;
+    void options.registry.update(options.chatId, { sessionId: saved.sessionId, usage });
+  };
   try {
     return await new Promise<ClaudeCompaction>((resolve) => {
       let preTokens: number | null = null;
@@ -1138,7 +1231,7 @@ export async function compactClaudeChat(
         clearTimeout(timer);
         resolve(result);
       };
-      controller.signal.addEventListener("abort", () => done({ ok: false, message: "Compacting was stopped. The conversation is unchanged." }), { once: true });
+      controller.signal.addEventListener("abort", () => done({ ok: false, message: COMPACT_STOPPED }), { once: true });
       session.bind({
         invoke: async () => ({ ok: false, text: "No Roqer run is active. End this turn." }),
         message: (message) => {
@@ -1150,6 +1243,7 @@ export async function compactClaudeChat(
             return;
           }
           if (message.type !== "result") return;
+          recordUsage(completeUsageTotals(claudeResultUsage(message)?.totals));
           if (boundary) done({ ok: true, preTokens, postTokens });
           else {
             const detail = typeof message.result === "string" && message.result.trim() !== "" ? ` ${message.result.trim()}` : "";
@@ -1161,6 +1255,8 @@ export async function compactClaudeChat(
       session.writeUserMessage([{ type: "text", text: "/compact" }]);
     });
   } finally {
+    forget();
+    if (!recorded) recordUsage(null);
     await session.close();
   }
 }

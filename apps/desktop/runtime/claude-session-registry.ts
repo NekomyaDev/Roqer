@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import type { ClaudeUsageTotals } from "./claude-planner";
+
 /**
  * Which saved Claude Code session holds each chat's conversation.
  *
@@ -24,6 +26,15 @@ export type ClaudeChatSession = {
   instanceId: string | null;
   /** The model the session last ran on, for compaction. */
   model: string | null;
+  /**
+   * Claude Code's running totals as of the last result in this session.
+   *
+   * A resumed process reports the totals of the whole saved conversation, not
+   * of the turn it just ran, so a run that resumes needs these to tell its own
+   * share from everything before it. Null when they were never recorded, or
+   * when something changed them without saying what they became.
+   */
+  usage: ClaudeUsageTotals | null;
   updatedAt: string;
 };
 
@@ -32,6 +43,20 @@ const isRecord = (value: unknown): value is JsonRecord =>
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const USAGE_FIELDS = ["inputTokens", "cacheReadTokens", "cacheWriteTokens", "outputTokens", "costUsd"] as const;
+
+/** Totals are kept only when every one of them read back as a usable figure. */
+function parseUsage(value: unknown): ClaudeUsageTotals | null {
+  if (!isRecord(value)) return null;
+  const totals = {} as ClaudeUsageTotals;
+  for (const field of USAGE_FIELDS) {
+    const count = value[field];
+    if (typeof count !== "number" || !Number.isFinite(count) || count < 0) return null;
+    totals[field] = count;
+  }
+  return totals;
+}
+
 function parseEntry(value: unknown): ClaudeChatSession | null {
   if (!isRecord(value) || typeof value.sessionId !== "string" || !SESSION_ID.test(value.sessionId)) return null;
   return {
@@ -39,6 +64,7 @@ function parseEntry(value: unknown): ClaudeChatSession | null {
     lastPrompt: typeof value.lastPrompt === "string" ? value.lastPrompt : null,
     instanceId: typeof value.instanceId === "string" ? value.instanceId : null,
     model: typeof value.model === "string" ? value.model : null,
+    usage: parseUsage(value.usage),
     updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : new Date(0).toISOString(),
   };
 }
@@ -108,7 +134,7 @@ export class ClaudeSessionRegistry {
       const entries = await this.load();
       const current = entries.get(chatId);
       const next: ClaudeChatSession = {
-        lastPrompt: null, instanceId: null, model: null,
+        lastPrompt: null, instanceId: null, model: null, usage: null,
         ...(current?.sessionId === change.sessionId ? current : {}),
         ...change,
         updatedAt: new Date().toISOString(),
