@@ -6,10 +6,13 @@ import { openManagedStudioSession } from './lib/managed-studio-session.mjs';
 const PORT = 43123;
 const PLACE_PATH = '/tmp/rsmcp-runner-unit/RunnerBaseplate.rbxl';
 
-function harness(handleTool, { startError } = {}) {
+function harness(handleTool, { startError, identityRetained = true } = {}) {
   const events = [];
   let controlEnv;
   const adapters = {
+    // Fixed here: what a host can do is the helper's own question, and these
+    // cases are about what it then asks for.
+    processIdentityRetained: () => identityRetained,
     createControl(env) {
       controlEnv = env;
       events.push('control:create');
@@ -389,6 +392,58 @@ function harness(handleTool, { startError } = {}) {
   );
   assert.deepEqual(run.events, ['control:create', 'control:start', 'control:stop']);
   assert.deepEqual(runtimeEnv, { ROBLOX_STUDIO_NO_AUTH: 'true' });
+}
+
+{
+  // A host that cannot hold Studio: the launch asks for no identity, and there
+  // is no ownership to authorize or hand back. Asking anyway would be refused
+  // before the spawn and the suite would never run there.
+  const runtimeEnv = {};
+  let statusCalls = 0;
+  const run = harness(async (args, _options, events) => {
+    if (args.action === 'status' && !args.launch_id) {
+      events.push('tool:baseline');
+      return { managed: [] };
+    }
+    if (args.action === 'launch') {
+      events.push('tool:launch');
+      assert.equal(args.require_process_identity, false);
+      return { launch_id: 'launch-plain' };
+    }
+    if (args.action === 'authorize' || args.action === 'complete') {
+      events.push(`tool:${args.action}`);
+      throw new Error(`${args.action} must not be asked for where identity is not retained`);
+    }
+    if (args.action === 'status') {
+      statusCalls++;
+      events.push('tool:connection');
+      return {
+        launch_id: 'launch-plain',
+        instance_id: 'anon:plain',
+        connected: true,
+        roles: ['edit'],
+        state: 'connected',
+      };
+    }
+    events.push('tool:close');
+    return { close_status: 'closed', state: 'exited' };
+  }, { identityRetained: false });
+
+  const session = await openManagedStudioSession({ port: PORT, env: runtimeEnv }, run.adapters);
+  assert.equal(session.instanceId, 'anon:plain');
+  assert.equal(session.managed, true);
+  await session.close();
+  assert.deepEqual(run.events, [
+    'control:create',
+    'control:start',
+    'place:stage',
+    'tool:baseline',
+    'tool:launch',
+    'tool:connection',
+    'tool:close',
+    'control:stop',
+    'place:cleanup',
+  ]);
 }
 
 console.log('managed Studio session passed');

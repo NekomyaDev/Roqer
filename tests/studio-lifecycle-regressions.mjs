@@ -17,6 +17,7 @@ import {
   configureStudioDirectoryIsolation,
   createIsolatedStudioDirectory,
   resolveStudioLogsDir,
+  studioProcessIdentityRetained,
 } from '../scripts/studio-lifecycle.mjs';
 
 const INSTANCE_UUID = randomUUID();
@@ -99,36 +100,53 @@ function reproPluginXml(marker, invalidUtf8 = false) {
 
 async function launchLocalPlace(client, placeFile, workingDirectory, launchedProcesses) {
   await configureStudioDirectoryIsolation({ requireStudioClosed: false });
+  // Only the Windows launcher can hold Studio and prove its identity; asking a
+  // host that cannot for one is refused before the spawn. The process this test
+  // force-closes later is the one the launch, or the connected status, reports.
+  const identityRetained = studioProcessIdentityRetained();
+  const rememberIdentity = (reported) => {
+    if (
+      !Number.isSafeInteger(reported?.pid) || reported.pid < 1 ||
+      typeof reported?.process_started_at_file_time !== 'string' ||
+      launchedProcesses.some((identity) => identity.processId === reported.pid)
+    ) return false;
+    launchedProcesses.push({
+      processId: reported.pid,
+      startedAtFileTime: reported.process_started_at_file_time,
+    });
+    return true;
+  };
   const launch = await client.callTool('manage_instance', {
     action: 'launch',
     source: 'local_file',
     local_place_file: placeFile,
     studio_working_directory: workingDirectory,
-    require_process_identity: true,
+    require_process_identity: identityRetained,
     wait_for_connection: false,
     timeout_ms: 120000,
   });
-  assert(!!launch.launch_id, `identity launch returned launch_id (${JSON.stringify(launch)})`);
-  assert(Number.isSafeInteger(launch.pid), `identity launch returned pid (${JSON.stringify(launch)})`);
-  assert(
-    typeof launch.process_started_at_file_time === 'string',
-    `identity launch returned process creation time (${JSON.stringify(launch)})`,
-  );
-  launchedProcesses.push({
-    processId: launch.pid,
-    startedAtFileTime: launch.process_started_at_file_time,
-  });
+  assert(!!launch.launch_id, `launch returned launch_id (${JSON.stringify(launch)})`);
+  if (identityRetained) {
+    assert(Number.isSafeInteger(launch.pid), `identity launch returned pid (${JSON.stringify(launch)})`);
+    assert(
+      typeof launch.process_started_at_file_time === 'string',
+      `identity launch returned process creation time (${JSON.stringify(launch)})`,
+    );
+  }
+  rememberIdentity(launch);
 
-  const authorized = await client.callTool('manage_instance', {
-    action: 'authorize',
-    launch_id: launch.launch_id,
-  });
-  assert(authorized.process_authorized === true, 'identity launch was authorized');
-  const completed = await client.callTool('manage_instance', {
-    action: 'complete',
-    launch_id: launch.launch_id,
-  });
-  assert(completed.process_ownership_released === true, 'identity launch ownership was released');
+  if (identityRetained) {
+    const authorized = await client.callTool('manage_instance', {
+      action: 'authorize',
+      launch_id: launch.launch_id,
+    });
+    assert(authorized.process_authorized === true, 'identity launch was authorized');
+    const completed = await client.callTool('manage_instance', {
+      action: 'complete',
+      launch_id: launch.launch_id,
+    });
+    assert(completed.process_ownership_released === true, 'identity launch ownership was released');
+  }
 
   const deadline = Date.now() + 120000;
   let status;
@@ -138,6 +156,9 @@ async function launchLocalPlace(client, placeFile, workingDirectory, launchedPro
       launch_id: launch.launch_id,
     });
     if (status.connected && status.instance_id) {
+      // A launch that kept no identity of its own is identified by what the
+      // server observed once Studio was up.
+      rememberIdentity(status);
       return { ...status, launch_id: launch.launch_id };
     }
     if (status.state === 'failed' || status.state === 'exited') break;

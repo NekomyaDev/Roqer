@@ -8,6 +8,8 @@ import { callMcpHttpTool } from './mcp-http-client.mjs';
 import {
   closeStudioProcess,
   configureStudioDirectoryIsolation,
+  studioProcessIdentityRetained,
+  studioReadablePlaceDirectory,
 } from '../../scripts/studio-lifecycle.mjs';
 
 const DEFAULT_LAUNCH_TIMEOUT_MS = 120000;
@@ -18,7 +20,9 @@ const RECOVERY_TIMEOUT_MS = 2000;
 const SUCCESSFUL_CLOSE_STATUSES = new Set(['closed', 'already_closed']);
 
 function stageRunnerBaseplate() {
-  const directory = mkdtempSync(path.join(os.tmpdir(), 'rsmcp-runner-'));
+  // Not the host's temp folder on Linux: Studio runs inside Vinegar's Flatpak
+  // sandbox, which has its own `/tmp` and cannot see this one.
+  const directory = mkdtempSync(path.join(studioReadablePlaceDirectory(), 'rsmcp-runner-'));
   const placePath = path.join(directory, 'RunnerBaseplate.rbxl');
   try {
     copyFileSync(path.join(REPO_ROOT, 'packages/core/assets/Baseplate.rbxl'), placePath);
@@ -35,6 +39,8 @@ function stageRunnerBaseplate() {
 }
 
 const defaultAdapters = {
+  /** Whether this host can hold Studio and prove which process a launch started. */
+  processIdentityRetained: studioProcessIdentityRetained,
   createControl(env) {
     return new McpClient('run-all-studio-manager', {
       env,
@@ -242,6 +248,7 @@ export async function openManagedStudioSession(
     : undefined;
 
   const adapters = { ...defaultAdapters, ...injectedAdapters };
+  const identityRetained = adapters.processIdentityRetained();
   const authToken = randomBytes(32).toString('hex');
   const restoreEnvironment = environmentGuard(
     runtimeEnv,
@@ -342,7 +349,10 @@ export async function openManagedStudioSession(
           action: 'launch',
           source: 'local_file',
           local_place_file: stagedPlace.path,
-          require_process_identity: true,
+          // A host that cannot hold Studio and prove its identity is asked for
+          // a plain launch instead: demanding one would refuse every launch
+          // there, and the launch still reports the process it found.
+          require_process_identity: identityRetained,
           timeout_ms: launchTimeoutMs,
           ...(studioWorkingDirectory ? { studio_working_directory: studioWorkingDirectory } : {}),
         },
@@ -400,21 +410,26 @@ export async function openManagedStudioSession(
       throw cleanupError(error, recoveryErrors);
     }
 
-    const authorized = await adapters.callTool(
-      'manage_instance',
-      { action: 'authorize', launch_id: launchId },
-      { port, env: ownedEnvironment, timeoutMs: TOOL_TIMEOUT_MS },
-    );
-    if (authorized?.process_authorized !== true) {
-      throw new Error(`manage_instance did not confirm launch ${launchId} was authorized`);
-    }
-    const completed = await adapters.callTool(
-      'manage_instance',
-      { action: 'complete', launch_id: launchId },
-      { port, env: ownedEnvironment, timeoutMs: TOOL_TIMEOUT_MS },
-    );
-    if (completed?.process_ownership_released !== true) {
-      throw new Error(`manage_instance did not confirm launch ${launchId} released process ownership`);
+    // Authorizing and completing a launch is how the caller hands back a Studio
+    // it was holding. Nothing was held where identity is not retained, and the
+    // launch reports itself authorized and released already.
+    if (identityRetained) {
+      const authorized = await adapters.callTool(
+        'manage_instance',
+        { action: 'authorize', launch_id: launchId },
+        { port, env: ownedEnvironment, timeoutMs: TOOL_TIMEOUT_MS },
+      );
+      if (authorized?.process_authorized !== true) {
+        throw new Error(`manage_instance did not confirm launch ${launchId} was authorized`);
+      }
+      const completed = await adapters.callTool(
+        'manage_instance',
+        { action: 'complete', launch_id: launchId },
+        { port, env: ownedEnvironment, timeoutMs: TOOL_TIMEOUT_MS },
+      );
+      if (completed?.process_ownership_released !== true) {
+        throw new Error(`manage_instance did not confirm launch ${launchId} released process ownership`);
+      }
     }
 
     const instanceId = await waitForEditConnection({
