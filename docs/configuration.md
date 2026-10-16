@@ -58,6 +58,8 @@ Studio to load the matching bundled plugin.
 | `ROBLOX_CREATOR_USER_ID` / `ROBLOX_CREATOR_GROUP_ID` | None | The user or group `upload_asset` publishes as when the call names neither. A group wins when both are set. |
 | `MCP_PLUGINS_DIR` | Platform Studio Plugins folder | Override the destination used by plugin installation. |
 | `ROBLOX_STUDIO_EXE` | Auto-discovered | Path to `RobloxStudioBeta.exe` for `manage_instance` when discovery under the Roblox `Versions` folder fails, or on a platform without discovery. It is the only way to choose the executable: tool callers cannot. |
+| `ROBLOX_STUDIO_VINEGAR` | Unset | Set to `0` to keep the server from using Vinegar on Linux at all. See [Linux, through Vinegar](linux.md). |
+| `ROBLOX_STUDIO_VINEGAR_DATA_DIR` | `~/.var/app/org.vinegarhq.Vinegar/data/vinegar` | Vinegar's data folder, for a relocated or unpackaged install. The Wine prefix, the plugins folder, Studio's settings, and the installed versions are all found inside it. |
 | `ROBLOX_STUDIO_REQUIRE_PRIMARY` | Unset | Set to `1` to refuse proxy mode when the primary port is taken, instead of starting a follower that promotes itself when the port frees. |
 | `ROBLOX_STUDIO_PROXY_PROMOTION_INTERVAL_MS` | `5000` | How often a follower checks whether it can take the primary port. |
 

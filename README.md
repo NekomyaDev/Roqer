@@ -52,7 +52,7 @@ a sword, the Scarlet Requiem, with a combo, a flash step, and three special atta
 
 You need:
 
-- Windows and Roblox Studio (macOS is untested)
+- Windows and Roblox Studio, or Linux with [Vinegar](https://vinegarhq.org) ([setup](docs/linux.md)); macOS is untested
 - [Node.js](https://nodejs.org) 20 or newer
 - a model: ChatGPT with the Codex app, Claude with [Claude Code](https://claude.com/claude-code), Gemini with the [Antigravity CLI](https://antigravity.google/product/antigravity-cli), or any OpenAI- or Anthropic-compatible endpoint
 
@@ -65,6 +65,8 @@ npm run start:desktop
 ```
 
 Roqer installs its Studio plugin when it starts. Open (or restart) Roblox Studio so it loads the plugin, then open a place, pick a model in Roqer, and ask for something.
+
+On Linux, Studio runs through Vinegar; [Linux, through Vinegar](docs/linux.md) covers installing it and sharing your project folders with its sandbox.
 
 If you use ChatGPT, Claude or Antigravity and don't have Codex, Claude Code or the Antigravity CLI yet, open Settings in Roqer and choose Install next to your account. Roqer runs OpenAI's, Anthropic's or Google's official installer after you confirm, then you connect your subscription.
 ## Use the Studio tools from another AI client
@@ -80,6 +82,7 @@ claude mcp add robloxstudio -- node C:\path\to\Roqer\packages\robloxstudio-mcp\d
 ## Documentation
 
 - [Building from source](docs/building-from-source.md)
+- [Linux, through Vinegar](docs/linux.md)
 - [Configuration](docs/configuration.md)
 - [Long Claude chats](docs/projects.md)
 - [3D modeling with Blender](docs/blender.md)

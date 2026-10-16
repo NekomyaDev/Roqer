@@ -18,6 +18,14 @@ state it starts.
    scripts that reuse an already-open Studio instance.
 3. **`HttpEnabled = true`** in Studio Experience Settings (Security tab).
 
+On Linux, Studio runs inside Vinegar's Flatpak sandbox
+([docs/linux.md](../docs/linux.md)). The managed suites have not been run there:
+they lease a port, install a plugin, and launch and close Studio, and the
+Vinegar launch keeps no retained process identity, so the installer, lifecycle,
+and isolation E2Es are expected to need work before they pass. A suite that
+opens a place file from this worktree also needs the worktree shared with
+Vinegar, because the sandbox cannot otherwise read it.
+
 ## Run
 
 **Feature completion gate:** a feature is not complete until

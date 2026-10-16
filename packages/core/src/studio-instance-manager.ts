@@ -15,8 +15,23 @@ import {
   getStudioPlatformCapabilities,
   type StudioHostPlatform,
   type StudioPlatformCapabilities,
+  type StudioRuntime,
   type StudioProcessIdentityLauncher,
 } from './studio-platform.js';
+import {
+  buildVinegarLaunchCommand,
+  flatpakOverrideCommand,
+  getVinegarInstall,
+  getVinegarSandboxFilesystem,
+  observeVinegarStudioProcesses,
+  listVinegarStudioProcesses,
+  resolveVinegarStudioExe,
+  toVinegarStudioPath,
+  vinegarCanReadPath,
+  vinegarPlaceFileDir,
+  type VinegarInstall,
+  type VinegarStudioProcess,
+} from './studio-vinegar.js';
 
 export type StudioLaunchSource = 'baseplate' | 'local_file' | 'published_place' | 'place_revision';
 
@@ -88,7 +103,18 @@ export type StudioProcessSnapshot =
   | { status: 'ok'; observedAt: number; processes: StudioProcessInfo[] }
   | { status: 'error'; observedAt: number; error: string };
 
-const BASEPLATE_TEMP_DIR = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+/**
+ * Where a generated baseplate place file is written.
+ *
+ * The system temp folder everywhere but Linux, where Studio runs inside
+ * Vinegar's Flatpak sandbox and cannot see the host's temp folder at all.
+ */
+export function baseplateTempDir(): string {
+  const vinegar = process.platform === 'linux' ? getVinegarInstall() : undefined;
+  return vinegar
+    ? vinegarPlaceFileDir(vinegar)
+    : path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+}
 const BASEPLATE_TEMP_NAME = /^Baseplate-\d+-\d+\.rbxl$/;
 const BASEPLATE_TEMPLATE_NAME = 'Baseplate.rbxl';
 
@@ -134,6 +160,8 @@ export interface StudioInstanceManagerOptions {
   registry?: ManagedInstanceRegistry;
   processAdapter?: StudioProcessAdapter;
   platformCapabilities?: StudioPlatformCapabilities;
+  /** The Vinegar install to launch Studio with, when the host runs Studio through Wine. */
+  vinegarInstall?: VinegarInstall;
   windowsStudioLauncher?: (
     exe: string,
     args: string[],
@@ -153,6 +181,8 @@ export type StudioLifecycleLauncher =
 export interface StudioLifecycleCapabilities {
   hostPlatform: StudioHostPlatform;
   windowsInteropAvailable: boolean;
+  /** How Studio runs on this host: natively, through Vinegar's Wine prefix, or not at all. */
+  studioRuntime: StudioRuntime;
   processIdentity: {
     supported: boolean;
     launcher: StudioLifecycleLauncher;
@@ -275,14 +305,37 @@ async function toWslPathAsync(windowsPath: string): Promise<string> {
   return runAsync('wslpath', ['-u', windowsPath]);
 }
 
+/**
+ * A path Studio can open, in the form the host's Studio expects.
+ *
+ * A Windows Studio reached from WSL wants a drive path; a Studio inside
+ * Vinegar's Wine prefix wants the prefix's `Z:` view of the same file, and can
+ * only open it at all if the Flatpak sandbox shares the folder it is in. Only
+ * an argument that names an existing absolute path is translated, so Studio's
+ * own flags and ids pass through untouched.
+ */
+function vinegarLaunchArg(install: VinegarInstall, arg: string): string {
+  if (!vinegarCanReadPath(arg, getVinegarSandboxFilesystem(install), install)) {
+    throw new Error(
+      `Vinegar's Flatpak sandbox cannot read ${arg}, so Studio would open an empty window instead of that file. ` +
+        `Share the folder with Vinegar once:\n  ${flatpakOverrideCommand(install, path.dirname(arg))}`,
+    );
+  }
+  return toVinegarStudioPath(arg);
+}
+
 function toStudioLaunchArg(arg: string): string {
-  if (!isWsl() || !path.isAbsolute(arg) || !existsSync(arg)) return arg;
-  return run('wslpath', ['-w', arg]);
+  if (!path.isAbsolute(arg) || !existsSync(arg)) return arg;
+  if (isWsl()) return run('wslpath', ['-w', arg]);
+  const vinegar = process.platform === 'linux' ? getVinegarInstall() : undefined;
+  return vinegar ? vinegarLaunchArg(vinegar, arg) : arg;
 }
 
 async function toStudioLaunchArgAsync(arg: string): Promise<string> {
-  if (!isWsl() || !path.isAbsolute(arg) || !existsSync(arg)) return arg;
-  return runAsync('wslpath', ['-w', arg]);
+  if (!path.isAbsolute(arg) || !existsSync(arg)) return arg;
+  if (isWsl()) return runAsync('wslpath', ['-w', arg]);
+  const vinegar = process.platform === 'linux' ? getVinegarInstall() : undefined;
+  return vinegar ? vinegarLaunchArg(vinegar, arg) : arg;
 }
 
 function powershellStringLiteral(value: string): string {
@@ -1046,6 +1099,18 @@ function resolveBaseplateTemplatePath(): string {
 const STALE_BASEPLATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const BASEPLATE_TEMP_SWEEP_NAME = /^Baseplate-(\d+)-\d+\.rbxl(\.lock)?$/;
 const LAUNCH_COMPLETION_TIMEOUT_MS = 3 * 60 * 1000;
+const LINUX_STUDIO_MISSING =
+  'Roblox Studio has no Linux build, and no Vinegar install was found. ' +
+  'Install Vinegar (https://vinegarhq.org, Flatpak org.vinegarhq.Vinegar) and start Studio once, or set ROBLOX_STUDIO_EXE.';
+/**
+ * How long a launch waits to see the Studio process it just started.
+ *
+ * Vinegar checks for a Studio update and prepares its Wine prefix before Studio
+ * itself appears, which takes longer than a direct spawn. The wait stays
+ * bounded: a launch whose process is never seen keeps no process id, which
+ * `close` reports plainly rather than stopping something it did not start.
+ */
+const VINEGAR_LAUNCH_OBSERVATION_TIMEOUT_MS = 25_000;
 
 function isProcessAlive(pid: number): boolean {
   try {
@@ -1061,9 +1126,10 @@ function isProcessAlive(pid: number): boolean {
 // files accumulate — Windows never cleans %TEMP% on its own. Sweep anything
 // matching our naming pattern that is older than a day.
 export function sweepStaleBaseplateFiles(): void {
+  const directory = baseplateTempDir();
   let entries: string[];
   try {
-    entries = readdirSync(BASEPLATE_TEMP_DIR);
+    entries = readdirSync(directory);
   } catch {
     return;
   }
@@ -1074,7 +1140,7 @@ export function sweepStaleBaseplateFiles(): void {
     // Owner server still running → its instance may still have the file open
     // (a WSL server can unlink a file Studio holds open across \\wsl.localhost).
     if (Number(match[1]) !== process.pid && isProcessAlive(Number(match[1]))) continue;
-    const file = path.join(BASEPLATE_TEMP_DIR, entry);
+    const file = path.join(directory, entry);
     try {
       if (statSync(file).mtimeMs < cutoff) rmSync(file, { force: true });
     } catch {
@@ -1084,9 +1150,10 @@ export function sweepStaleBaseplateFiles(): void {
 }
 
 function createBaseplatePlaceFile(): string {
-  mkdirSync(BASEPLATE_TEMP_DIR, { recursive: true });
+  const directory = baseplateTempDir();
+  mkdirSync(directory, { recursive: true });
   sweepStaleBaseplateFiles();
-  const file = path.join(BASEPLATE_TEMP_DIR, `Baseplate-${process.pid}-${Date.now()}.rbxl`);
+  const file = path.join(directory, `Baseplate-${process.pid}-${Date.now()}.rbxl`);
   copyFileSync(resolveBaseplateTemplatePath(), file);
   return file;
 }
@@ -1094,7 +1161,7 @@ function createBaseplatePlaceFile(): string {
 function isGeneratedBaseplatePlaceFile(file: string): boolean {
   const resolvedFile = path.resolve(file);
   return (
-    path.dirname(resolvedFile) === path.resolve(BASEPLATE_TEMP_DIR) &&
+    path.dirname(resolvedFile) === path.resolve(baseplateTempDir()) &&
     BASEPLATE_TEMP_NAME.test(path.basename(resolvedFile))
   );
 }
@@ -1130,8 +1197,14 @@ export function resolveStudioExe(): string {
     return '/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio';
   }
 
+  if (process.platform === 'linux' && !isWsl()) {
+    const vinegar = getVinegarInstall();
+    if (!vinegar) throw new Error(LINUX_STUDIO_MISSING);
+    return resolveVinegarStudioExe(vinegar);
+  }
+
   if (process.platform !== 'win32' && !isWsl()) {
-    throw new Error('Roblox Studio executable auto-discovery is only supported on Windows, WSL, and macOS. Set ROBLOX_STUDIO_EXE.');
+    throw new Error('Roblox Studio executable auto-discovery is only supported on Windows, WSL, macOS, and Linux through Vinegar. Set ROBLOX_STUDIO_EXE.');
   }
 
   const localAppData = windowsLocalAppData();
@@ -1161,8 +1234,14 @@ async function resolveStudioExeAsync(): Promise<string> {
   if (process.platform === 'darwin') {
     return '/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio';
   }
+  if (process.platform === 'linux' && !isWsl()) {
+    const vinegar = getVinegarInstall();
+    if (!vinegar) throw new Error(LINUX_STUDIO_MISSING);
+    return resolveVinegarStudioExe(vinegar);
+  }
+
   if (process.platform !== 'win32' && !isWsl()) {
-    throw new Error('Roblox Studio executable auto-discovery is only supported on Windows, WSL, and macOS. Set ROBLOX_STUDIO_EXE.');
+    throw new Error('Roblox Studio executable auto-discovery is only supported on Windows, WSL, macOS, and Linux through Vinegar. Set ROBLOX_STUDIO_EXE.');
   }
 
   const localAppData = await windowsLocalAppDataAsync();
@@ -1183,6 +1262,24 @@ async function resolveStudioExeAsync(): Promise<string> {
   return candidates[0];
 }
 
+/**
+ * A Studio that Vinegar is running, as the rest of the manager sees a process.
+ *
+ * Wine gives no window title through the host process table, so matching a
+ * connected place to its process relies on the command line, which carries the
+ * place file or place id the launch asked for.
+ */
+function toStudioProcessInfo(proc: VinegarStudioProcess): StudioProcessInfo {
+  return {
+    Id: proc.id,
+    Name: 'RobloxStudioBeta',
+    Path: proc.executable,
+    MainWindowTitle: '',
+    CommandLine: proc.commandLine,
+    StartTimeUtcFileTime: proc.startedAt,
+  };
+}
+
 export function listStudioProcesses(): StudioProcessInfo[] {
   if (process.platform === 'darwin') {
     let out = '';
@@ -1200,6 +1297,16 @@ export function listStudioProcesses(): StudioProcessInfo[] {
         return { Id: Number(pid), Name: 'RobloxStudio', Path: rest.join(' '), MainWindowTitle: '' };
       })
       .filter((proc) => Number.isFinite(proc.Id));
+  }
+
+  if (process.platform === 'linux' && !isWsl()) {
+    const vinegar = getVinegarInstall();
+    if (!vinegar) return [];
+    try {
+      return listVinegarStudioProcesses().map(toStudioProcessInfo);
+    } catch (error) {
+      throw new Error(`Could not enumerate Roblox Studio processes: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   if (process.platform !== 'win32' && !isWsl()) return [];
@@ -1240,6 +1347,13 @@ export async function observeStudioProcesses(): Promise<StudioProcessSnapshot> {
           return { Id: Number(pid), Name: 'RobloxStudio', Path: rest.join(' '), MainWindowTitle: '' };
         })
         .filter((proc) => Number.isFinite(proc.Id));
+      return { status: 'ok', observedAt, processes };
+    }
+
+    if (process.platform === 'linux' && !isWsl()) {
+      const vinegar = getVinegarInstall();
+      if (!vinegar) return { status: 'ok', observedAt, processes: [] };
+      const processes = (await observeVinegarStudioProcesses()).map(toStudioProcessInfo);
       return { status: 'ok', observedAt, processes };
     }
 
@@ -1359,6 +1473,7 @@ export class StudioInstanceManager {
   private readonly registry: ManagedInstanceRegistry;
   private readonly processAdapter: StudioProcessAdapter;
   private readonly platformCapabilities?: StudioPlatformCapabilities;
+  private readonly vinegarInstall?: VinegarInstall;
   private readonly windowsStudioLauncher: NonNullable<
     StudioInstanceManagerOptions['windowsStudioLauncher']
   >;
@@ -1376,6 +1491,7 @@ export class StudioInstanceManager {
     this.registry = options.registry ?? new ManagedInstanceRegistry(options.registryDir);
     this.processAdapter = options.processAdapter ?? {};
     this.platformCapabilities = options.platformCapabilities;
+    this.vinegarInstall = options.vinegarInstall;
     this.windowsStudioLauncher = options.windowsStudioLauncher ?? spawnWindowsStudio;
     this.confirmedExitMisses = options.confirmedExitMisses ?? 2;
     this.confirmedExitGraceMs = options.confirmedExitGraceMs ?? 5000;
@@ -1389,6 +1505,7 @@ export class StudioInstanceManager {
       return {
         hostPlatform: platform.hostPlatform,
         windowsInteropAvailable: platform.windowsInteropAvailable,
+        studioRuntime: platform.studioRuntime,
         processIdentity: {
           supported: true,
           launcher: 'custom-adapter',
@@ -1398,6 +1515,7 @@ export class StudioInstanceManager {
     return {
       hostPlatform: platform.hostPlatform,
       windowsInteropAvailable: platform.windowsInteropAvailable,
+      studioRuntime: platform.studioRuntime,
       processIdentity: { ...platform.processIdentity },
     };
   }
@@ -1651,6 +1769,9 @@ export class StudioInstanceManager {
     const before = new Set(initialSnapshot.status === 'ok' ? initialSnapshot.processes.map((proc) => proc.Id) : []);
     const exe = preparedOptions.studioExecutable ??
       (this.processAdapter.resolveStudioExe ? await this.processAdapter.resolveStudioExe() : await resolveStudioExeAsync());
+    const vinegar = lifecycleCapabilities.studioRuntime === 'wine-vinegar'
+      ? this.vinegarInstall ?? getVinegarInstall()
+      : undefined;
     const args = await Promise.all(buildStudioLaunchArgs(preparedOptions).map(toStudioLaunchArgAsync));
     const spawnOptions: Parameters<typeof spawn>[2] = {
       cwd: studioWorkingDirectory ??
@@ -1673,6 +1794,25 @@ export class StudioInstanceManager {
           processEnvironment,
           studioWorkingDirectory,
         );
+      } else if (vinegar) {
+        const launch = buildVinegarLaunchCommand({
+          install: vinegar,
+          studioArgs: args,
+          workingDirectory: studioWorkingDirectory,
+          environment: processEnvironment,
+        });
+        // Vinegar owns a single application instance: when one is already
+        // running, this command hands it the arguments and exits at once. The
+        // process left behind is therefore not Studio, and its exit says
+        // nothing about Studio's, so no pid is claimed from it and no exit is
+        // listened for. The launched Studio is found by process observation.
+        const child = spawn(launch.command, launch.args, { ...spawnOptions, cwd: process.cwd() });
+        proc = {
+          pid: undefined,
+          nativePid: undefined,
+          unref: () => child.unref(),
+          onError: (listener) => { child.once('error', listener); },
+        };
       } else {
         const child = spawn(exe, args, spawnOptions);
         proc = {
@@ -1822,11 +1962,11 @@ export class StudioInstanceManager {
       );
     });
 
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + (vinegar ? VINEGAR_LAUNCH_OBSERVATION_TIMEOUT_MS : 5000);
     while (Date.now() < deadline && record.nativeProcessId === undefined) {
       const snapshot = await this.getProcessSnapshot(true);
       const created = snapshot.status === 'ok'
-        ? snapshot.processes.find((candidate) => !before.has(candidate.Id))
+        ? this.selectLaunchedProcess(record, snapshot.processes, before)
         : undefined;
       if (created) {
         record.nativeProcessId = created.Id;
@@ -1837,7 +1977,11 @@ export class StudioInstanceManager {
       await delay(250);
     }
 
-    if (record.nativeProcessId === undefined && process.platform !== 'win32' && !isWsl()) {
+    // Under Vinegar the spawned command is the launcher, not Studio, so there
+    // is no pid to fall back to. A record without one is observed as running,
+    // and `close` says plainly that it has no process to stop rather than
+    // signalling a process this launch does not own.
+    if (record.nativeProcessId === undefined && !vinegar && process.platform !== 'win32' && !isWsl()) {
       record.nativeProcessId = proc.pid;
       await this.persist(record);
     }
@@ -2186,6 +2330,32 @@ export class StudioInstanceManager {
         await this.persist(record);
       }
     }
+  }
+
+  /**
+   * The process a launch just created, among those not running before it.
+   *
+   * A command line naming this launch's place file or place id identifies it
+   * exactly, which is what Wine gives on Linux in place of a window title. With
+   * nothing that specific, a single new process is the one; several
+   * unidentified new processes are left alone until one can be told apart.
+   */
+  private selectLaunchedProcess(
+    record: ManagedStudioInstance,
+    processes: StudioProcessInfo[],
+    before: ReadonlySet<number>,
+  ): StudioProcessInfo | undefined {
+    const created = processes.filter((candidate) => !before.has(candidate.Id));
+    if (created.length === 0) return undefined;
+    const identified = created.filter((candidate) => {
+      const commandLine = candidate.CommandLine ?? '';
+      if (record.localPlaceFile) return commandLine.includes(path.basename(record.localPlaceFile));
+      if (record.placeId !== undefined) return commandLine.includes(String(record.placeId));
+      return false;
+    });
+    if (identified.length === 1) return identified[0];
+    if (identified.length > 1) return undefined;
+    return created.length === 1 ? created[0] : undefined;
   }
 
   private observeRecord(record: ManagedStudioInstance, snapshot: StudioProcessSnapshot): ManagedProcessObservation {

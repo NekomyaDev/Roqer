@@ -460,6 +460,7 @@ export function createHttpServer(tools: RobloxStudioTools, bridge: BridgeService
           endpoint: '/mcp/manage_instance',
           hostPlatform: studioLifecycleCapabilities?.hostPlatform,
           windowsInteropAvailable: studioLifecycleCapabilities?.windowsInteropAvailable,
+          studioRuntime: studioLifecycleCapabilities?.studioRuntime,
           processIdentity: studioLifecycleCapabilities?.processIdentity,
         },
       } : {},

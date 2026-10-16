@@ -16,6 +16,7 @@ import { homedir } from 'os';
 import { isUtf8 } from 'buffer';
 import { SaxesParser } from 'saxes';
 import { getStudioPlatformCapabilities } from './studio-platform.js';
+import { getVinegarInstall } from './studio-vinegar.js';
 
 // Shared helpers for the per-package install-plugin.ts in
 // @roqer/mcp and @roqer/mcp-inspector. Bundled
@@ -120,6 +121,12 @@ export function getPluginsFolder(): string {
         'Set MCP_PLUGINS_DIR to skip detection.',
     );
   }
+
+  // On Linux Studio runs inside Vinegar's Wine prefix, whose %LOCALAPPDATA% is
+  // Vinegar's own appdata folder. That is where Studio looks for plugins, and
+  // it is on the host file system, so the installer writes it directly.
+  const vinegar = getVinegarInstall();
+  if (vinegar) return vinegar.pluginsDir;
 
   return join(homedir(), 'Documents', 'Roblox', 'Plugins');
 }
@@ -226,7 +233,13 @@ function repairDefaultStudioPluginDirectorySetting(
       'Plugins',
     ].join('/').replaceAll('\\', '/');
   } else {
-    return;
+    const vinegar = getVinegarInstall();
+    if (!vinegar) return;
+    defaultPluginsFolder = vinegar.pluginsDir;
+    settingsPath = vinegar.studioSettingsPath;
+    // Studio reads its own setting from inside Wine, so the repaired value has
+    // to be the prefix's view of the folder, not the host's.
+    studioPluginsDirectory = vinegar.pluginsDirInPrefix.replaceAll('\\', '/');
   }
 
   if (pluginsFolder !== defaultPluginsFolder) return;

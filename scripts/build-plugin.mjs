@@ -14,7 +14,7 @@ import {
 } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, basename } from 'path';
-import { homedir } from 'os';
+import { homedir, userInfo } from 'os';
 import { randomUUID } from 'crypto';
 import { ensureLibMP } from './fetch-libmp.mjs';
 
@@ -258,6 +258,46 @@ function resolveWslWindowsPluginsDir() {
   }
 }
 
+/**
+ * Vinegar's Studio plugins folder on Linux.
+ *
+ * Roblox has no Linux Studio; Vinegar runs the Windows one in a Wine prefix,
+ * and Studio loads its plugins from that prefix's Wine user profile, on the
+ * host file system. The server owns Vinegar discovery proper, in
+ * `packages/core/src/studio-vinegar.ts`; this script cannot import it, so it
+ * reads the same two environment variables and resolves the same folder. An
+ * absent prefix means Vinegar has not run yet, and a plugin copied into a
+ * folder no Studio reads would be a silent no-op, so nothing is installed.
+ */
+function resolveVinegarPluginsDir() {
+  if (/^(0|false|no|off)$/i.test((process.env.ROBLOX_STUDIO_VINEGAR ?? '').trim())) return undefined;
+  // A WSL host runs the Windows Studio; a plugin in a Linux Wine prefix there
+  // would be loaded by nothing.
+  try {
+    if (/microsoft|wsl/i.test(readFileSync('/proc/version', 'utf8'))) return undefined;
+  } catch {
+    // No procfs: treat the host as an ordinary Linux one.
+  }
+  const override = (process.env.ROBLOX_STUDIO_VINEGAR_DATA_DIR ?? '').trim();
+  const dataDir = override !== ''
+    ? override
+    : join(homedir(), '.var', 'app', 'org.vinegarhq.Vinegar', 'data', 'vinegar');
+  const usersDir = join(dataDir, 'prefixes', 'studio', 'drive_c', 'users');
+  if (!existsSync(usersDir)) return undefined;
+  const hostUser = userInfo().username;
+  let profiles;
+  try {
+    profiles = readdirSync(usersDir).filter((name) => name !== 'Public');
+  } catch {
+    return undefined;
+  }
+  const prefixUser = profiles.includes(hostUser)
+    ? hostUser
+    : profiles.length === 1 ? profiles[0] : undefined;
+  if (!prefixUser) return undefined;
+  return join(usersDir, prefixUser, 'AppData', 'Local', 'Roblox', 'Plugins');
+}
+
 function resolvePluginsDir() {
   // Explicit override wins. Useful for CI or unconventional Studio installs.
   if (process.env.MCP_PLUGINS_DIR) return process.env.MCP_PLUGINS_DIR;
@@ -271,7 +311,7 @@ function resolvePluginsDir() {
       // WSL hosts Studio on the Windows side; translate the Windows path.
       const wslDir = resolveWslWindowsPluginsDir();
       if (wslDir) return wslDir;
-      return undefined;
+      return resolveVinegarPluginsDir();
     }
     default:
       return undefined;
@@ -367,7 +407,10 @@ if (process.argv.includes('--build-only')) {
   } else {
     console.log(
       `Skipped install: no Studio plugins folder resolvable on ${process.platform}. ` +
-      `Set MCP_PLUGINS_DIR or copy ${variant.outputName} manually.`,
+      (process.platform === 'linux'
+        ? 'Install Vinegar (https://vinegarhq.org) and start Studio once, set MCP_PLUGINS_DIR, ' +
+          `or copy ${variant.outputName} manually.`
+        : `Set MCP_PLUGINS_DIR or copy ${variant.outputName} manually.`),
     );
   }
 }

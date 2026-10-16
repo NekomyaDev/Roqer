@@ -1,11 +1,23 @@
 import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 
+import { getVinegarInstall } from './studio-vinegar.js';
+
 export type StudioHostPlatform = 'windows' | 'wsl' | 'macos' | 'linux';
 export type StudioProcessIdentityLauncher =
   | 'windows-retained'
   | 'wsl-windows-retained'
   | 'unavailable';
+
+/**
+ * How Roblox Studio runs on this host.
+ *
+ * `native` is a Studio build for the host or, under WSL, the Windows Studio
+ * reached through interop. `wine-vinegar` is Studio inside Vinegar's Wine
+ * prefix, the only way it runs on Linux. `unavailable` is a host with no way to
+ * run Studio at all, where `manage_instance` can only report that.
+ */
+export type StudioRuntime = 'native' | 'wine-vinegar' | 'unavailable';
 
 export interface StudioPlatformEvidence {
   platform: NodeJS.Platform;
@@ -15,12 +27,15 @@ export interface StudioPlatformEvidence {
   windowsRootPresent?: boolean;
   wslPathPresent?: boolean;
   windowsInteropAvailable?: boolean;
+  /** Whether a usable Vinegar install was found. Linux only. */
+  vinegarAvailable?: boolean;
 }
 
 export interface StudioPlatformCapabilities {
   hostPlatform: StudioHostPlatform;
   isWsl: boolean;
   windowsInteropAvailable: boolean;
+  studioRuntime: StudioRuntime;
   processIdentity: {
     supported: boolean;
     launcher: StudioProcessIdentityLauncher;
@@ -41,6 +56,7 @@ export function detectStudioPlatform(
       hostPlatform: 'windows',
       isWsl: false,
       windowsInteropAvailable: true,
+      studioRuntime: 'native',
       processIdentity: {
         supported: true,
         launcher: 'windows-retained',
@@ -53,6 +69,7 @@ export function detectStudioPlatform(
       hostPlatform: 'macos',
       isWsl: false,
       windowsInteropAvailable: false,
+      studioRuntime: 'native',
       processIdentity: {
         supported: false,
         launcher: 'unavailable',
@@ -72,6 +89,7 @@ export function detectStudioPlatform(
       hostPlatform: 'wsl',
       isWsl: true,
       windowsInteropAvailable: true,
+      studioRuntime: 'native',
       processIdentity: {
         supported: true,
         launcher: 'wsl-windows-retained',
@@ -79,13 +97,20 @@ export function detectStudioPlatform(
     };
   }
 
+  // Native Linux runs Studio only through Vinegar's Wine prefix. Vinegar hands
+  // each launch to its own single application instance, so no caller can hold a
+  // suspended Studio and prove its exact creation identity; the launched
+  // process is identified by observing the process table instead.
   const reason = hasWslKernel
     ? 'The Linux kernel has a WSL signature, but the live process cannot execute the Windows launcher.'
-    : 'The retained Windows Studio launcher is unavailable on native Linux.';
+    : evidence.vinegarAvailable === true
+      ? 'Vinegar runs Studio through Wine in a Flatpak sandbox, which cannot retain an exact process identity. The launched Studio is identified by process observation instead.'
+      : 'Roblox Studio has no Linux build. Install Vinegar (https://vinegarhq.org) to run Studio on this host.';
   return {
     hostPlatform: 'linux',
     isWsl: false,
     windowsInteropAvailable: false,
+    studioRuntime: !hasWslKernel && evidence.vinegarAvailable === true ? 'wine-vinegar' : 'unavailable',
     processIdentity: {
       supported: false,
       launcher: 'unavailable',
@@ -155,6 +180,7 @@ export function getStudioPlatformCapabilities(): StudioPlatformCapabilities {
     windowsRootPresent: existsSync('/mnt/c/Windows'),
     wslPathPresent: existsSync('/usr/bin/wslpath') || existsSync('/bin/wslpath'),
     windowsInteropAvailable: probeWindowsInterop(kernelVersion),
+    vinegarAvailable: getVinegarInstall() !== undefined,
   });
   return cachedStudioPlatformCapabilities;
 }

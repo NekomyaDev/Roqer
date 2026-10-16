@@ -17,8 +17,9 @@ import { JOB_RETENTION_MS } from "./model-preview";
  * flipbook. Studio keeps a file's first image for the session, so a changed
  * texture needs a new name; each job's files are named after the job.
  *
- * Only Windows installs are written. On macOS the content folder is inside the
- * signed app bundle, which must not be changed.
+ * On Windows and on Linux through Vinegar, the install folder is an ordinary
+ * folder this process can write. On macOS the content folder is inside the
+ * signed app bundle, which must not be changed, so nothing is written there.
  */
 
 /** The folder, under an install's `content/textures`, that holds every preview and nothing else. */
@@ -31,16 +32,43 @@ export const MAX_KEPT_PREVIEWS = 200;
 /** A preview is named `<job id>-<file stem>.png`; only names of that shape are ever removed. */
 const PREVIEW_NAME = /^[0-9a-f]{8}-[A-Za-z0-9_-]{1,80}\.png$/;
 const STUDIO_EXECUTABLE = "RobloxStudioBeta.exe";
+/**
+ * Where Vinegar installs Studio on Linux.
+ *
+ * Roblox publishes no Linux Studio; Vinegar (https://vinegarhq.org) runs the
+ * Windows one in a Wine prefix, and keeps its `version-*` folders under its own
+ * Flatpak data folder on the host file system. The MCP server owns Vinegar
+ * discovery proper (`packages/core/src/studio-vinegar.ts`); staging a texture
+ * needs only the folder, and reads the same override it does.
+ */
+const VINEGAR_FLATPAK_ID = "org.vinegarhq.Vinegar";
+const VINEGAR_DATA_DIR_ENV = "ROBLOX_STUDIO_VINEGAR_DATA_DIR";
+
+/** The folder holding Roblox's `Versions`, or nothing when this host has none. */
+function studioVersionsRoot(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
+  if (platform === "win32") {
+    return typeof env.LOCALAPPDATA === "string" && env.LOCALAPPDATA !== ""
+      ? path.join(env.LOCALAPPDATA, "Roblox", "Versions")
+      : undefined;
+  }
+  if (platform !== "linux") return undefined;
+  const override = env[VINEGAR_DATA_DIR_ENV]?.trim();
+  if (override !== undefined && override !== "") return path.join(override, "versions");
+  const home = env.HOME;
+  if (typeof home !== "string" || home === "") return undefined;
+  return path.join(home, ".var", "app", VINEGAR_FLATPAK_ID, "data", "vinegar", "versions");
+}
 
 /**
- * The `content` folders of the Studio installs on this computer: on Windows,
- * every `%LOCALAPPDATA%\Roblox\Versions\version-*` folder holding Studio's
- * executable. Roblox keeps one per installed version, so all are written and
- * the running Studio finds its own.
+ * The `content` folders of the Studio installs on this computer: every
+ * `version-*` folder holding Studio's executable, under
+ * `%LOCALAPPDATA%\Roblox\Versions` on Windows and under Vinegar's `versions`
+ * folder on Linux. Roblox keeps one per installed version, so all are written
+ * and the running Studio finds its own.
  */
 export async function findStudioContentDirectories(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): Promise<string[]> {
-  if (platform !== "win32" || typeof env.LOCALAPPDATA !== "string" || env.LOCALAPPDATA === "") return [];
-  const versions = path.join(env.LOCALAPPDATA, "Roblox", "Versions");
+  const versions = studioVersionsRoot(env, platform);
+  if (versions === undefined) return [];
   const entries = await fs.readdir(versions, { withFileTypes: true }).catch(() => []);
   const found: string[] = [];
   for (const entry of entries) {

@@ -1,7 +1,7 @@
 import { BridgeService } from '../bridge-service.js';
 import { createHttpServer } from '../http-server.js';
 import { RobloxStudioTools } from '../tools/index.js';
-import { buildStudioLaunchArgs, buildWindowsStudioStartScript, buildWindowsStudioStopScript, cleanupManagedBaseplateFiles, isWsl, quoteWindowsCommandLineArg, StudioInstanceManager, sweepStaleBaseplateFiles } from '../studio-instance-manager.js';
+import { baseplateTempDir, buildStudioLaunchArgs, buildWindowsStudioStartScript, buildWindowsStudioStopScript, cleanupManagedBaseplateFiles, isWsl, quoteWindowsCommandLineArg, StudioInstanceManager, sweepStaleBaseplateFiles } from '../studio-instance-manager.js';
 import { detectStudioPlatform } from '../studio-platform.js';
 import { ManagedInstanceRegistry } from '../managed-instance-registry.js';
 import request from 'supertest';
@@ -1826,7 +1826,7 @@ describe('Smoke', () => {
 
   test('manage_instance close recovers a managed baseplate from the shared registry', async () => {
     const registryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'robloxstudio-mcp-registry-'));
-    const baseplateDir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const baseplateDir = baseplateTempDir();
     const placeFile = path.join(baseplateDir, 'Baseplate-123-456.rbxl');
     fs.mkdirSync(baseplateDir, { recursive: true });
     fs.writeFileSync(placeFile, '<roblox />', 'utf8');
@@ -1887,7 +1887,7 @@ describe('Smoke', () => {
 
   test('manage_instance close prunes previous-boot registry records without stopping recycled pids', async () => {
     const registryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'robloxstudio-mcp-registry-'));
-    const baseplateDir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const baseplateDir = baseplateTempDir();
     const placeFile = path.join(baseplateDir, 'Baseplate-124-456.rbxl');
     fs.mkdirSync(baseplateDir, { recursive: true });
     fs.writeFileSync(placeFile, '<roblox />', 'utf8');
@@ -1946,7 +1946,7 @@ describe('Smoke', () => {
 
   test('manage_instance close returns success when another process already stopped the managed instance', async () => {
     const registryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'robloxstudio-mcp-registry-'));
-    const baseplateDir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const baseplateDir = baseplateTempDir();
     const placeFile = path.join(baseplateDir, 'Baseplate-125-456.rbxl');
     fs.mkdirSync(baseplateDir, { recursive: true });
     fs.writeFileSync(placeFile, '<roblox />', 'utf8');
@@ -2086,7 +2086,7 @@ describe('Smoke', () => {
 
   test('manage_instance status self-heals same-boot records whose Studio process exited', async () => {
     const registryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'robloxstudio-mcp-registry-'));
-    const baseplateDir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const baseplateDir = baseplateTempDir();
     const placeFile = path.join(baseplateDir, 'Baseplate-126-456.rbxl');
     fs.mkdirSync(baseplateDir, { recursive: true });
     fs.writeFileSync(placeFile, '<roblox />', 'utf8');
@@ -2230,7 +2230,7 @@ describe('Smoke', () => {
   });
 
   test('baseplate cleanup removes generated temp files and Studio lock sidecars', () => {
-    const dir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const dir = baseplateTempDir();
     fs.mkdirSync(dir, { recursive: true });
     const placeFile = path.join(dir, 'Baseplate-123-456.rbxl');
     const lockFile = `${placeFile}.lock`;
@@ -2255,7 +2255,7 @@ describe('Smoke', () => {
   });
 
   test('baseplate sweep deletes stale files from dead servers but keeps fresh and foreign files', () => {
-    const dir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const dir = baseplateTempDir();
     fs.mkdirSync(dir, { recursive: true });
     // A pid that is guaranteed dead: a child that has already exited.
     const deadPid = spawnSync(process.execPath, ['-e', '']).pid;
@@ -2281,7 +2281,7 @@ describe('Smoke', () => {
   });
 
   test('baseplate sweep keeps stale files whose owner server is still running', () => {
-    const dir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const dir = baseplateTempDir();
     fs.mkdirSync(dir, { recursive: true });
     const oldTime = new Date(Date.now() - 25 * 60 * 60 * 1000);
     // The jest runner's parent process is alive for the duration of the test.
@@ -2300,7 +2300,7 @@ describe('Smoke', () => {
   });
 
   test('baseplate launch sweeps stale files as a side effect', () => {
-    const dir = path.join(os.tmpdir(), 'robloxstudio-mcp-baseplates');
+    const dir = baseplateTempDir();
     fs.mkdirSync(dir, { recursive: true });
     const deadPid = spawnSync(process.execPath, ['-e', '']).pid;
     const oldTime = new Date(Date.now() - 25 * 60 * 60 * 1000);
