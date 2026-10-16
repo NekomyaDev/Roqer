@@ -386,9 +386,40 @@ export function vinegarCanReadPath(
   return filesystem.allowed.some((root) => isInside(resolved, root));
 }
 
+/**
+ * A value as a shell would read it back verbatim.
+ *
+ * The override command is printed for the user to run, so it has to survive a
+ * shell: a double-quoted path still expands $HOME and a backtick, which single
+ * quotes do not, and a single quote inside is closed, escaped, and reopened.
+ */
+function shellQuoted(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 /** The command that shares a folder with Vinegar for good. */
 export function flatpakOverrideCommand(install: VinegarInstall, directory: string): string {
-  return `${install.command} override --user --filesystem=${JSON.stringify(directory)} ${install.applicationId}`;
+  return `${install.command} override --user --filesystem=${shellQuoted(directory)} ${install.applicationId}`;
+}
+
+/**
+ * Why Studio inside the sandbox could not reach a path, or nothing when it can.
+ *
+ * A path the sandbox cannot see produces an empty Studio window rather than an
+ * error, so a launch that would hit one is refused with the command that fixes
+ * it. `share` is the folder to share: the file's own folder for a file, the
+ * directory itself for one Studio is asked to work in.
+ */
+export function vinegarReachRefusal(
+  install: VinegarInstall,
+  filesystem: VinegarSandboxFilesystem,
+  target: string,
+  consequence: string,
+  share: string = path.dirname(target),
+): string | undefined {
+  if (vinegarCanReadPath(target, filesystem, install)) return undefined;
+  return `Vinegar's Flatpak sandbox cannot read ${target}, so ${consequence}. ` +
+    `Share the folder with Vinegar once:\n  ${flatpakOverrideCommand(install, share)}`;
 }
 
 export interface VinegarLaunchCommandOptions {
@@ -461,15 +492,37 @@ function readProcessStartTicks(id: number): string | undefined {
 }
 
 /**
+ * A process's own program, from `/proc/<pid>/cmdline`.
+ *
+ * The arguments there are separated by null bytes, so the first one is the
+ * program exactly, however many spaces its path holds. `pgrep -a` joins them
+ * with spaces, where a path holding one cannot be told from two arguments.
+ */
+function readProcessExecutable(id: number): string | undefined {
+  try {
+    const argv0 = readFileSync(`/proc/${id}/cmdline`, 'utf8').split('\0')[0];
+    return argv0 === '' ? undefined : argv0;
+  } catch {
+    // The process exited between the listing and this read.
+    return undefined;
+  }
+}
+
+/**
  * Studio processes in `pgrep -a` output.
  *
  * Only a process whose own program is `RobloxStudioBeta.exe` counts. Studio's
  * embedded browser names that executable in its own arguments, and matching the
  * whole command line would report every one of those helpers as a Studio.
+ *
+ * The program is read from `/proc`, where the arguments are separated by null
+ * bytes; the first word of `pgrep` output stands in only for a process that
+ * ended first, and a path holding a space is read wrongly there.
  */
 export function parseVinegarStudioProcesses(
   pgrepOutput: string,
   startedAt: (id: number) => string | undefined = readProcessStartTicks,
+  executableOf: (id: number) => string | undefined = readProcessExecutable,
 ): VinegarStudioProcess[] {
   const processes: VinegarStudioProcess[] = [];
   for (const rawLine of pgrepOutput.split(/\r?\n/u)) {
@@ -480,7 +533,7 @@ export function parseVinegarStudioProcesses(
     const id = Number(match[1]);
     if (!Number.isSafeInteger(id) || id <= 0) continue;
     const commandLine = match[2];
-    const executable = commandLine.split(/\s+/u)[0] ?? '';
+    const executable = executableOf(id) ?? commandLine.split(/\s+/u)[0] ?? '';
     if (path.posix.basename(executable).toLowerCase() !== VINEGAR_STUDIO_EXECUTABLE.toLowerCase()) {
       continue;
     }
@@ -577,13 +630,6 @@ export function getVinegarInstall(): VinegarInstall | undefined {
   return cachedInstall.install;
 }
 
-/** Forgets the probed install, so a test can observe a changed host. */
-export function resetVinegarInstallCache(): void {
-  cachedInstall = undefined;
-  cachedFilesystem = undefined;
-  cachedUserDirectories = undefined;
-}
-
 let cachedUserDirectories: VinegarUserDirectories | undefined;
 
 /** The XDG folders a Flatpak filesystem token resolves to on this host. */
@@ -615,17 +661,46 @@ export function getVinegarUserDirectories(): VinegarUserDirectories {
   return cachedUserDirectories;
 }
 
-let cachedFilesystem: VinegarSandboxFilesystem | undefined;
+let cachedFilesystem: { probedAt: number; filesystem: VinegarSandboxFilesystem } | undefined;
 
-/** What Vinegar's sandbox can reach on this host, probed once. */
-export function getVinegarSandboxFilesystem(install: VinegarInstall): VinegarSandboxFilesystem {
-  if (cachedFilesystem) return cachedFilesystem;
-  const output = runQuietly(install.command, ['info', '--show-permissions', install.applicationId]);
-  cachedFilesystem = resolveFlatpakFilesystems(
+/**
+ * How long a reading of the sandbox's shares stands.
+ *
+ * One launch asks about several paths, which is what the reading saves; it is
+ * short because a refused launch tells the user to share a folder, and the
+ * launch they try next has to see that they did.
+ */
+const SANDBOX_FILESYSTEM_TTL_MS = 5_000;
+
+/** What Vinegar's sandbox can reach on this host, as of a recent probe. */
+export function getVinegarSandboxFilesystem(
+  install: VinegarInstall,
+  readPermissions: (install: VinegarInstall) => string | undefined = (target) =>
+    runQuietly(target.command, ['info', '--show-permissions', target.applicationId]),
+  directories: VinegarUserDirectories = getVinegarUserDirectories(),
+): VinegarSandboxFilesystem {
+  const now = Date.now();
+  if (cachedFilesystem !== undefined && now - cachedFilesystem.probedAt < SANDBOX_FILESYSTEM_TTL_MS) {
+    return cachedFilesystem.filesystem;
+  }
+  const output = readPermissions(install);
+  const filesystem = resolveFlatpakFilesystems(
     output === undefined ? [] : parseFlatpakFilesystems(output),
-    getVinegarUserDirectories(),
+    directories,
   );
-  return cachedFilesystem;
+  cachedFilesystem = { probedAt: now, filesystem };
+  return filesystem;
+}
+
+/**
+ * Drops the reading of the sandbox's shares, so the next caller takes a new one.
+ *
+ * Called where a launch is refused for a path the sandbox cannot reach: the
+ * user is told to share that folder, and nothing of the old reading should
+ * outlive their doing it.
+ */
+export function forgetVinegarSandboxFilesystem(): void {
+  cachedFilesystem = undefined;
 }
 
 /** Studio processes Vinegar is running, by observing the host process table. */

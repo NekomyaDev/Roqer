@@ -20,15 +20,15 @@ import {
 } from './studio-platform.js';
 import {
   buildVinegarLaunchCommand,
-  flatpakOverrideCommand,
+  forgetVinegarSandboxFilesystem,
   getVinegarInstall,
   getVinegarSandboxFilesystem,
   observeVinegarStudioProcesses,
   listVinegarStudioProcesses,
   resolveVinegarStudioExe,
   toVinegarStudioPath,
-  vinegarCanReadPath,
   vinegarPlaceFileDir,
+  vinegarReachRefusal,
   type VinegarInstall,
   type VinegarStudioProcess,
 } from './studio-vinegar.js';
@@ -96,6 +96,13 @@ export interface StudioProcessInfo {
   Path?: string;
   MainWindowTitle?: string;
   CommandLine?: string;
+  /**
+   * When the process started, in whatever form the host counts it: a Windows
+   * FILETIME, where the name comes from, and kernel ticks since boot from
+   * `/proc` on Linux. Compared only for equality with the value recorded for
+   * the same process, which is what keeps a recycled pid from passing for it,
+   * so the two are never mixed and the unit itself is never read.
+   */
   StartTimeUtcFileTime?: string;
 }
 
@@ -314,13 +321,24 @@ async function toWslPathAsync(windowsPath: string): Promise<string> {
  * an argument that names an existing absolute path is translated, so Studio's
  * own flags and ids pass through untouched.
  */
+function refuseUnreachableVinegarPath(
+  install: VinegarInstall,
+  target: string,
+  consequence: string,
+  share?: string,
+): void {
+  const refusal = vinegarReachRefusal(
+    install, getVinegarSandboxFilesystem(install), target, consequence, share,
+  );
+  if (refusal === undefined) return;
+  // The user is about to share that folder, so nothing of the reading this
+  // refusal was made from should outlive their doing it.
+  forgetVinegarSandboxFilesystem();
+  throw new Error(refusal);
+}
+
 function vinegarLaunchArg(install: VinegarInstall, arg: string): string {
-  if (!vinegarCanReadPath(arg, getVinegarSandboxFilesystem(install), install)) {
-    throw new Error(
-      `Vinegar's Flatpak sandbox cannot read ${arg}, so Studio would open an empty window instead of that file. ` +
-        `Share the folder with Vinegar once:\n  ${flatpakOverrideCommand(install, path.dirname(arg))}`,
-    );
-  }
+  refuseUnreachableVinegarPath(install, arg, 'Studio would open an empty window instead of that file');
   return toVinegarStudioPath(arg);
 }
 
@@ -1795,6 +1813,15 @@ export class StudioInstanceManager {
           studioWorkingDirectory,
         );
       } else if (vinegar) {
+        // The working directory reaches Studio as a path inside the sandbox,
+        // which a folder the sandbox cannot see is not: Flatpak would fail to
+        // enter it, saying nothing about what to share.
+        if (studioWorkingDirectory !== undefined) {
+          refuseUnreachableVinegarPath(
+            vinegar, studioWorkingDirectory,
+            'Studio could not be started in it', studioWorkingDirectory,
+          );
+        }
         const launch = buildVinegarLaunchCommand({
           install: vinegar,
           studioArgs: args,

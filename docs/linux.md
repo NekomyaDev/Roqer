@@ -79,6 +79,9 @@ This matters for:
   want Studio to open a place file from it.
 - **Files you ask Studio to write**, such as an export or a profiler capture, if
   you want them somewhere other than Documents or Pictures.
+- **A working directory you ask Studio to start in**
+  (`manage_instance`'s `studio_working_directory`), which is refused the same
+  way when the sandbox cannot reach it.
 
 Generated baseplates need nothing: Roqer writes them into
 `~/.var/app/org.vinegarhq.Vinegar/data/roqer-places`, inside Vinegar's own

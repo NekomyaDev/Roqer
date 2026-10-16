@@ -39,10 +39,12 @@ const STUDIO_EXECUTABLE = "RobloxStudioBeta.exe";
  * Windows one in a Wine prefix, and keeps its `version-*` folders under its own
  * Flatpak data folder on the host file system. The MCP server owns Vinegar
  * discovery proper (`packages/core/src/studio-vinegar.ts`); staging a texture
- * needs only the folder, and reads the same override it does.
+ * needs only the folder, and reads the same two variables it does: the data
+ * folder's location, and whether Vinegar is to be used at all.
  */
 const VINEGAR_FLATPAK_ID = "org.vinegarhq.Vinegar";
 const VINEGAR_DATA_DIR_ENV = "ROBLOX_STUDIO_VINEGAR_DATA_DIR";
+const VINEGAR_ENABLED_ENV = "ROBLOX_STUDIO_VINEGAR";
 
 /** The folder holding Roblox's `Versions`, or nothing when this host has none. */
 function studioVersionsRoot(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
@@ -52,6 +54,9 @@ function studioVersionsRoot(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): 
       : undefined;
   }
   if (platform !== "linux") return undefined;
+  // Vinegar switched off: the server will not run Studio through it, so its
+  // install is not the one a preview would reach.
+  if (/^(0|false|no|off)$/i.test(env[VINEGAR_ENABLED_ENV]?.trim() ?? "")) return undefined;
   const override = env[VINEGAR_DATA_DIR_ENV]?.trim();
   if (override !== undefined && override !== "") return path.join(override, "versions");
   const home = env.HOME;

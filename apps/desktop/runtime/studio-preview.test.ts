@@ -82,6 +82,22 @@ test("a relocated Vinegar data folder is where Linux looks", async () => {
   });
 });
 
+test("with Vinegar switched off, Linux has no install to stage into", async () => {
+  await withTemp(async (root) => {
+    const data = path.join(root, ".var", "app", "org.vinegarhq.Vinegar", "data", "vinegar");
+    await vinegarVersions(data, { "version-aaa": { studio: true, content: true } });
+
+    // The server will not run Studio through Vinegar, so its install is not
+    // the one a preview would reach.
+    for (const off of ["0", "false", "no", "off", " 0 "]) {
+      assert.deepEqual(await findStudioContentDirectories({ HOME: root, ROBLOX_STUDIO_VINEGAR: off }, "linux"), []);
+    }
+    assert.deepEqual(await findStudioContentDirectories({ HOME: root, ROBLOX_STUDIO_VINEGAR: "1" }, "linux"), [
+      path.join(data, "versions", "version-aaa", "content"),
+    ]);
+  });
+});
+
 test("staging copies each texture into every install under a name unique to the job", async () => {
   await withTemp(async (root) => {
     const a = path.join(root, "a", "content");

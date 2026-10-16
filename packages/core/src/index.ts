@@ -28,6 +28,7 @@ export {
   detectVinegarInstall,
   flatpakOverrideCommand,
   flatpakVinegarDataDir,
+  forgetVinegarSandboxFilesystem,
   getVinegarInstall,
   getVinegarSandboxFilesystem,
   getVinegarUserDirectories,
@@ -41,6 +42,7 @@ export {
   vinegarCanReadPath,
   vinegarDataDir,
   vinegarPlaceFileDir,
+  vinegarReachRefusal,
 } from './studio-vinegar.js';
 export type {
   VinegarEvidence,

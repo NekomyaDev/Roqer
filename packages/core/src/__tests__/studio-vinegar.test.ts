@@ -5,6 +5,8 @@ import {
   detectVinegarInstall,
   flatpakOverrideCommand,
   flatpakVinegarDataDir,
+  forgetVinegarSandboxFilesystem,
+  getVinegarSandboxFilesystem,
   parseFlatpakFilesystems,
   parseProcessStartTicks,
   parseUserDirectories,
@@ -14,6 +16,7 @@ import {
   toVinegarStudioPath,
   vinegarCanReadPath,
   vinegarPlaceFileDir,
+  vinegarReachRefusal,
   type VinegarInstall,
   type VinegarUserDirectories,
 } from '../studio-vinegar.js';
@@ -150,8 +153,17 @@ describe('Vinegar discovery', () => {
 
   test('the remediation command shares one folder for good', () => {
     expect(flatpakOverrideCommand(INSTALL, '/home/dev/My Places')).toBe(
-      '/usr/bin/flatpak override --user --filesystem="/home/dev/My Places" org.vinegarhq.Vinegar',
+      "/usr/bin/flatpak override --user --filesystem='/home/dev/My Places' org.vinegarhq.Vinegar",
     );
+  });
+
+  test('the remediation command survives the shell it is pasted into', () => {
+    // Single quotes, so a folder named after a variable is shared and not
+    // expanded; a quote in the name closes them, escapes itself, and reopens.
+    expect(flatpakOverrideCommand(INSTALL, '/home/dev/$HOME `whoami`'))
+      .toContain("--filesystem='/home/dev/$HOME `whoami`' ");
+    expect(flatpakOverrideCommand(INSTALL, "/home/dev/it's mine"))
+      .toContain("--filesystem='/home/dev/it'\\''s mine' ");
   });
 });
 
@@ -239,6 +251,65 @@ describe('Vinegar sandbox reach', () => {
   });
 });
 
+describe('Vinegar sandbox readings', () => {
+  beforeEach(() => forgetVinegarSandboxFilesystem());
+  afterEach(() => forgetVinegarSandboxFilesystem());
+
+  test('one reading answers a whole launch, and a refused launch does not keep it', () => {
+    let reads = 0;
+    const probe = () => {
+      reads += 1;
+      return SHOW_PERMISSIONS;
+    };
+
+    expect(getVinegarSandboxFilesystem(INSTALL, probe, DIRECTORIES).allowed).toContain(`${HOME}/Documents`);
+    getVinegarSandboxFilesystem(INSTALL, probe, DIRECTORIES);
+    expect(reads).toBe(1);
+
+    // A launch is refused, the user shares the folder the message named, and
+    // the launch they try next has to see that they did.
+    forgetVinegarSandboxFilesystem();
+    const shared = [...SHOW_PERMISSIONS.split('\n')];
+    shared[5] = 'filesystems=xdg-documents;/home/dev/places;';
+    expect(getVinegarSandboxFilesystem(INSTALL, () => shared.join('\n'), DIRECTORIES).allowed)
+      .toContain('/home/dev/places');
+    expect(reads).toBe(1);
+  });
+
+  test('a host where the shares cannot be read reaches nothing but Vinegar itself', () => {
+    const filesystem = getVinegarSandboxFilesystem(INSTALL, () => undefined, DIRECTORIES);
+    expect(filesystem).toEqual({ allowed: [], denied: [] });
+    expect(vinegarCanReadPath(`${HOME}/Documents/a.rbxl`, filesystem, INSTALL)).toBe(false);
+    expect(vinegarCanReadPath(vinegarPlaceFileDir(INSTALL), filesystem, INSTALL)).toBe(true);
+  });
+});
+
+describe('Vinegar reach refusals', () => {
+  const FILESYSTEM = resolveFlatpakFilesystems(parseFlatpakFilesystems(SHOW_PERMISSIONS), DIRECTORIES);
+
+  test('a file Studio can open is not refused', () => {
+    expect(vinegarReachRefusal(
+      INSTALL, FILESYSTEM, `${HOME}/Documents/a.rbxl`, 'Studio would open an empty window instead of that file',
+    )).toBeUndefined();
+  });
+
+  test('a refused file names its own folder as the one to share', () => {
+    const refusal = vinegarReachRefusal(
+      INSTALL, FILESYSTEM, '/home/dev/places/a.rbxl', 'Studio would open an empty window instead of that file',
+    );
+    expect(refusal).toContain('cannot read /home/dev/places/a.rbxl');
+    expect(refusal).toContain("--filesystem='/home/dev/places' org.vinegarhq.Vinegar");
+  });
+
+  test('a working directory names itself, not the folder above it', () => {
+    const refusal = vinegarReachRefusal(
+      INSTALL, FILESYSTEM, '/home/dev/work', 'Studio could not be started in it', '/home/dev/work',
+    );
+    expect(refusal).toContain('cannot read /home/dev/work');
+    expect(refusal).toContain("--filesystem='/home/dev/work' org.vinegarhq.Vinegar");
+  });
+});
+
 describe('Vinegar launch command', () => {
   test('Vinegar options precede the application, and Studio arguments follow it', () => {
     expect(buildVinegarLaunchCommand({
@@ -288,8 +359,28 @@ describe('Vinegar Studio processes', () => {
     'not-a-process-line',
   ].join('\n');
 
+  /** What /proc reports as each of those processes' own program. */
+  const PROGRAMS: Record<number, string> = {
+    134662: '/home/dev/.var/app/org.vinegarhq.Vinegar/data/vinegar/versions/version-4f08/RobloxStudioBeta.exe',
+    134839: 'C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\144.0\\msedgewebview2.exe',
+    134880: 'C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\144.0\\msedgewebview2.exe',
+  };
+
+  test('a program whose path holds a space is still read as Studio', () => {
+    // `pgrep -a` joins the arguments with spaces, so its output cannot say
+    // where the program's path ends; /proc does.
+    const line = '134662 /home/dev/My Vinegar/versions/version-4f08/RobloxStudioBeta.exe --task EditFile';
+    const exe = '/home/dev/My Vinegar/versions/version-4f08/RobloxStudioBeta.exe';
+    expect(parseVinegarStudioProcesses(line, () => '914327', () => exe)).toEqual([
+      { id: 134662, startedAt: '914327', executable: exe, commandLine: line.slice('134662 '.length) },
+    ]);
+    // Without /proc the first word stands in, and a path holding a space is
+    // not recognised rather than taken for another program's.
+    expect(parseVinegarStudioProcesses(line, () => '914327', () => undefined)).toEqual([]);
+  });
+
   test('only a process whose own program is Studio counts', () => {
-    expect(parseVinegarStudioProcesses(PGREP, () => '914327')).toEqual([
+    expect(parseVinegarStudioProcesses(PGREP, () => '914327', (id) => PROGRAMS[id])).toEqual([
       {
         id: 134662,
         startedAt: '914327',
@@ -305,7 +396,7 @@ describe('Vinegar Studio processes', () => {
   });
 
   test('a process that exited before it could be read keeps no start time', () => {
-    expect(parseVinegarStudioProcesses(PGREP, () => undefined)[0].startedAt).toBeUndefined();
+    expect(parseVinegarStudioProcesses(PGREP, () => undefined, (id) => PROGRAMS[id])[0].startedAt).toBeUndefined();
   });
 
   test('the start time is read past a program name holding spaces and parentheses', () => {
