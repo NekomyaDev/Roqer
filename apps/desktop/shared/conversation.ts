@@ -17,6 +17,16 @@ export type ConversationMessage = {
    * fresh session ask for it again instead of acting as if nothing was.
    */
   attachments?: MessageAttachments;
+  /** A note the user sent while a run was working, which the provider received mid-run. */
+  note?: true;
+  /**
+   * Who wrote an assistant reply: true for a Claude Code run, false for a run
+   * on another provider. A saved Claude conversation finds where it left off by
+   * its last prompt; a prompt repeated later on another provider is told apart
+   * by who answered it. Absent when the reply carries no run to ask, so a
+   * resumed session treats it as its own rather than as somebody else's.
+   */
+  claude?: boolean;
 };
 
 export type MessageAttachments = { pictures: number; files: number };
@@ -89,6 +99,8 @@ export function boundConversation(messages: readonly ConversationMessage[], summ
       role: message.role, text,
       ...(run === undefined ? {} : { run }),
       ...(message.attachments === undefined ? {} : { attachments: message.attachments }),
+      ...(message.note === true ? { note: true as const } : {}),
+      ...(message.claude === undefined ? {} : { claude: message.claude }),
     });
     totalChars += text.length + (run === undefined ? 0 : digestChars(run));
   }
@@ -150,6 +162,8 @@ export function isConversationContext(value: unknown): value is ConversationCont
     }
     if (message.attachments !== undefined &&
       (message.role !== "user" || !isMessageAttachments(message.attachments))) return false;
+    if (message.note !== undefined && (message.note !== true || message.role !== "user")) return false;
+    if (message.claude !== undefined && (typeof message.claude !== "boolean" || message.role !== "assistant")) return false;
     if (totalChars > MAX_CONVERSATION_CHARS) return false;
   }
   return true;

@@ -82,6 +82,15 @@ export async function compactChatSessions(chatId: string): Promise<boolean> {
   return window.workbenchDesktop?.chats.compact(chatId) ?? false;
 }
 
+/**
+ * Tell the main process a chat was deleted, so what it kept outside the window
+ * goes with it: provider conversations, the saved Claude session, and Claude
+ * Code's transcript of the chat.
+ */
+export async function forgetChatSessions(chatId: string): Promise<boolean> {
+  return window.workbenchDesktop?.chats.forget(chatId) ?? false;
+}
+
 export async function releaseAttachments(ids: string[]): Promise<void> {
   await window.workbenchDesktop?.assets.release(ids);
 }
@@ -239,6 +248,16 @@ export async function loadModelPreview(id: string): Promise<ModelPreviewResult> 
  */
 export async function loadEvidencePicture(ref: string): Promise<EvidencePictureResult> {
   return window.workbenchDesktop?.previews.loadPicture(ref) ?? { ok: false, reason: "refused" };
+}
+
+/**
+ * Compact a chat's saved Claude conversation with Claude's own summary.
+ * `noSession` when the chat has none, so the caller compacts it another way.
+ */
+export async function compactChat(projectId: string, chatId: string): Promise<{ ok: boolean; message: string; noSession?: true }> {
+  const bridge = window.workbenchDesktop?.chats;
+  if (!bridge) return { ok: false, message: "Compacting needs the desktop app.", noSession: true };
+  return bridge.compactModel(projectId, chatId);
 }
 
 export async function getProviderStatus(provider: ProviderId): Promise<ProviderStatus> {

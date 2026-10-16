@@ -122,6 +122,8 @@ declare global {
       };
       chats: {
         compact(chatId: string): Promise<boolean>;
+        forget(chatId: string): Promise<boolean>;
+        compactModel(projectId: string, chatId: string): Promise<{ ok: boolean; message: string; noSession?: true }>;
       };
       app: {
         getDataPath(): Promise<string>;

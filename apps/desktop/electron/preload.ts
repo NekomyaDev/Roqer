@@ -278,6 +278,23 @@ const chats = {
    * False when a run is working on the chat right now.
    */
   compact: (chatId: string): Promise<boolean> => ipcRenderer.invoke("chat:compact", chatId),
+  /**
+   * Forget what a deleted chat kept outside the window: its provider
+   * conversations, its saved Claude session, and Claude Code's transcript of it.
+   */
+  forget: (chatId: string): Promise<boolean> => ipcRenderer.invoke("chat:forget", chatId),
+  /**
+   * Compact the chat's saved Claude conversation now, as `/compact` does.
+   * `noSession` when there is none to compact.
+   */
+  compactModel: async (projectId: string, chatId: string): Promise<{ ok: boolean; message: string; noSession?: true }> => {
+    const value: unknown = await ipcRenderer.invoke("chat:compact-model", { projectId, chatId });
+    if (typeof value !== "object" || value === null) return { ok: false, message: "Compacting returned an invalid answer." };
+    const answer = value as { ok?: unknown; message?: unknown; noSession?: unknown };
+    return typeof answer.ok === "boolean" && typeof answer.message === "string"
+      ? { ok: answer.ok, message: answer.message, ...(answer.noSession === true ? { noSession: true as const } : {}) }
+      : { ok: false, message: "Compacting returned an invalid answer." };
+  },
 };
 
 contextBridge.exposeInMainWorld("workbenchDesktop", {

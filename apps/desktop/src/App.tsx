@@ -11,15 +11,15 @@ import { createPortal } from "react-dom";
 import { ClipTrimDialog } from "./clip-trim-dialog";
 import { VIDEO_EXTENSIONS, type ClipSelection } from "../shared/reference-clip";
 import {
-  appendMessage, createChat, createId, createInitialWorkspace, createProject,
+  appendMessage, createChat, createId, createInitialWorkspace, createProject, undeliverNotes,
   deleteChat, deleteProject, modelPreference, normalizeWorkspace, renameChat,
   renameProject, selectedModelId, setChatCompaction, setChatStudioInstance, chatStudioTarget, chatsByActivity, withdrawMessage,
   type AssetAttachment, type ChatMessage, type WorkspaceState,
 } from "./model";
 import {
-  cancelRun, cancelRunStart, compactChatSessions, getStudioStatus,
+  cancelRun, cancelRunStart, compactChatSessions, forgetChatSessions, getStudioStatus,
   hasDesktopRuntime, loadWorkspace, pickAsset, getStorageStatus, recoverWorkspace, exportWorkspace, releaseAttachments,
-  answerRunQuestion, attachImage, attachVideo, ATTACHABLE_IMAGE_TYPES, ATTACHABLE_VIDEO_TYPES, selectClip, steerRun,
+  answerRunQuestion, attachImage, attachVideo, ATTACHABLE_IMAGE_TYPES, ATTACHABLE_VIDEO_TYPES, selectClip, steerRun, compactChat,
   getBridgeState, restartBridge, subscribeToBridge, type McpServerState,
   getUpdateState, installUpdate, subscribeToUpdates, type AppUpdateState,
   flushWorkspace, getProviderModels, getProviderStatus, openScriptInStudio, respondToRun, saveWorkspace, startRun,
@@ -29,14 +29,14 @@ import {
 } from "./platform";
 import {
   activitySteps, applyRunEvent, createRunView, describeOutcome, recordAppliedAndVerified,
-  recordGateIssues, recordHasWarnings, recordOnlyAnswered, recordSteps, runAppliedAndVerified,
-  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture,
+  recordGateIssues, recordHasWarnings, recordOnlyAnswered, recordSteps, recordTranscriptSegments, runAppliedAndVerified,
+  runGateIssues, runHasWarnings, runOnlyAnswered, toRunRecord, hasPicture, transcriptSegments,
   type ActivityStep, type PendingApproval, type RunView,
 } from "./run-view";
 import { EvidencePicture, rememberEvidencePicture } from "./evidence-picture";
 import { QUESTION_ESCAPE_OPTION, type RunQuestion } from "../shared/question";
 import { summarizeTasks, type RunTask, type RunTaskStatus } from "../shared/tasks";
-import { Markdown } from "./markdown-view";
+import { Markdown, StreamingMarkdown } from "./markdown-view";
 import { SettingsPage } from "./settings-page";
 import { DiagnosticsActions } from "./diagnostics-actions";
 import { sendBlockedNotice } from "./send-blocked";
@@ -60,7 +60,7 @@ import {
 } from "./diff-view";
 import {
   aggregateDuration, buildActivityModel, completedRunMetadataLabel, currentNodeTitle,
-  elapsedLabel, MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
+  elapsedLabel, leafNode, MAX_VISIBLE_ALERTS, outputTokensLabel, type ActivityNode, type StepStatus,
 } from "./activity-model";
 import { CompletionLine } from "./completion-line";
 import {
@@ -174,7 +174,7 @@ const COMPACT_KEEPS_MESSAGES = 2;
  * a record is written from the same view the model would have been sent.
  */
 function toConversationMessages(messages: readonly ChatMessage[]): ConversationMessage[] {
-  return messages.map(({ role, text, run, attachments: attached }) => {
+  return messages.map(({ role, text, run, attachments: attached, note }) => {
     const digest = run === undefined ? undefined : digestRun(run);
     // A replay carries the words, not the files; the count says they existed.
     // Clamped to what the main process accepts, so an odd saved message can
@@ -186,6 +186,8 @@ function toConversationMessages(messages: readonly ChatMessage[]): ConversationM
       role, text,
       ...(digest === undefined || digestIsEmpty(digest) ? {} : { run: digest }),
       ...(role === "user" && pictures + files > 0 ? { attachments: { pictures, files } } : {}),
+      ...(note === true && role === "user" ? { note: true as const } : {}),
+      ...(role === "assistant" && run !== undefined ? { claude: run.planner === "claude-code" } : {}),
     };
   });
 }
@@ -309,6 +311,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   /** The community icon has just taken the dismissed card's place and pulses once. */
   const [communityIconArrived, setCommunityIconArrived] = useState(false);
+  /** The chat whose message waits for its compaction to finish before it sends. */
+  const [sendAfterCompact, setSendAfterCompact] = useState<string | null>(null);
   /** Why Send opened Settings, shown at the top of it; null when it was opened by hand. */
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -654,7 +658,7 @@ function App() {
     for (const run of finished) {
       const view = run.view!;
       recordedRuns.current.add(view.runId);
-      setWorkspace((current) => appendMessage(current, run.projectId, run.chatId, {
+      setWorkspace((current) => appendMessage(undeliverNotes(current, run.projectId, run.chatId, view.notes.length - view.notesDelivered), run.projectId, run.chatId, {
         id: createId("message"),
         role: "assistant",
         text: view.text.trim() || view.summary,
@@ -684,8 +688,20 @@ function App() {
   // between the main process dropping the provider's conversation and the
   // record being saved would rebuild that conversation from the whole chat.
   const compacting = compactingChatId !== null && compactingChatId === selectedChat?.id;
+  // Claude chats compact their saved conversation with Claude's own summary;
+  // the main process says when there is none, and the record is used instead.
+  const modelCompact = provider === "claude" && hasDesktopRuntime();
   // Nothing new to fold yet, or a run may be working on this chat.
-  const canCompact = !isRunning && !compacting && compactTo > compactedFrom;
+  const canCompact = !isRunning && compactingChatId === null &&
+    (modelCompact ? (selectedChat?.messages.length ?? 0) > 0 : compactTo > compactedFrom);
+
+  /** Forget a chat's context reading, once a compact has made the figure untrue. */
+  const forgetContextReading = (chatId: string) => setContextReadings((current) => {
+    if (!current.has(chatId)) return current;
+    const next = new Map(current);
+    next.delete(chatId);
+    return next;
+  });
 
   /**
    * Fold the chat's older messages into a record the model reads in their place.
@@ -697,35 +713,50 @@ function App() {
     if (!selectedChat || !selectedProject || !canCompact) return;
     const projectId = selectedProject.id;
     const chatId = selectedChat.id;
-    if (hasDesktopRuntime()) {
-      setCompactingChatId(chatId);
-      try {
-        if (!(await compactChatSessions(chatId))) return;
-      } finally {
-        setCompactingChatId(null);
+    // Held until the whole compact is done, the record fallback included, so a
+    // message queued meanwhile is sent with the compacted conversation.
+    setCompactingChatId(chatId);
+    try {
+      if (modelCompact) {
+        setCompactNotice({ chatId, text: "Claude is summarizing this chat's conversation; this can take a minute. A message you send now waits until it finishes." });
+        const result = await compactChat(projectId, chatId);
+        if (result.noSession !== true) {
+          setCompactNotice({ chatId, text: result.message });
+          // The reading described the context Claude compacted away, so the
+          // meter shows nothing rather than a figure beside a notice that
+          // contradicts it, until the next run reports.
+          if (result.ok) forgetContextReading(chatId);
+          return;
+        }
+        setCompactNotice(null);
+        // No saved Claude conversation: the window's own record stands in.
+        if (compactTo <= compactedFrom) {
+          // Nothing saved and nothing left to fold: say so rather than leave
+          // the button looking like it did something.
+          setCompactNotice({ chatId, text: "This chat has nothing to compact yet." });
+          return;
+        }
       }
+      if (hasDesktopRuntime() && !(await compactChatSessions(chatId))) return;
+      const summary = compactChatSummary(
+        selectedChat.compaction?.summary ?? "",
+        toConversationMessages(selectedChat.messages.slice(compactedFrom, compactTo)),
+      );
+      // The figures are the provider's last report for this chat, taken as the
+      // compact happens. A chat with no report yet records none.
+      const reading = contextReadings.get(chatId);
+      const usage: { usedTokens?: number; windowTokens?: number | null } = reading === undefined
+        ? {}
+        : { usedTokens: reading.usedTokens, windowTokens: reading.windowTokens };
+      setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary, ...usage }));
+      // The reading described the context before the compact. The meter shows
+      // nothing rather than a figure the compact made untrue, until the next run reports.
+      forgetContextReading(chatId);
+      const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
+      setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
+    } finally {
+      setCompactingChatId(null);
     }
-    const summary = compactChatSummary(
-      selectedChat.compaction?.summary ?? "",
-      toConversationMessages(selectedChat.messages.slice(compactedFrom, compactTo)),
-    );
-    // The figures are the provider's last report for this chat, taken as the
-    // compact happens. A chat with no report yet records none.
-    const reading = contextReadings.get(chatId);
-    const usage: { usedTokens?: number; windowTokens?: number | null } = reading === undefined
-      ? {}
-      : { usedTokens: reading.usedTokens, windowTokens: reading.windowTokens };
-    setWorkspace((current) => setChatCompaction(current, projectId, chatId, { folded: compactTo, summary, ...usage }));
-    // The reading described the context before the compact. The meter shows
-    // nothing rather than a figure the compact made untrue, until the next run reports.
-    setContextReadings((current) => {
-      if (!current.has(chatId)) return current;
-      const next = new Map(current);
-      next.delete(chatId);
-      return next;
-    });
-    const note = compactUsageNote(usage.usedTokens, usage.windowTokens);
-    setCompactNotice(note === null ? null : { chatId, text: `Compacted. ${note}` });
   };
   const showRunControls = runStarting || runView !== null;
   /** The composer addresses the running agent rather than starting a run. */
@@ -767,7 +798,7 @@ function App() {
       return;
     }
     setWorkspace((current) => appendMessage(current, target.projectId, target.chatId, {
-      id: createId("message"), role: "user", text, createdAt: new Date().toISOString(),
+      id: createId("message"), role: "user", text, createdAt: new Date().toISOString(), note: true,
     }));
     setComposer("");
     const pending = runView?.pendingQuestion;
@@ -781,7 +812,9 @@ function App() {
   const sendPrompt = async () => {
     if (steering) { await sendSteer(); return; }
     const prompt = composedMessage(pastedBlocks, composer);
-    if (!prompt || isRunning || compacting || !hydrated || !storageAvailable || storageRecovery.required) return;
+    if (!prompt || isRunning || !hydrated || !storageAvailable || storageRecovery.required) return;
+    // Starting a run would reopen the conversation being compacted; it waits instead.
+    if (compacting && workspace.selectedChatId !== null) { setSendAfterCompact(workspace.selectedChatId); return; }
     if (prompt.length > 64_000) { setAttachmentError("Shorten the message to 64,000 characters before sending."); return; }
     const unread = attachments.find((attachment) => attachment.clip !== undefined && (attachment.clip.id === undefined || readingClips.has(attachment.id)));
     if (unread !== undefined) {
@@ -974,6 +1007,18 @@ function App() {
     if (overlaySidebar) setSidebarShown(false);
   }, [overlaySidebar]);
 
+  // A message sent during compaction goes once it finishes, into the chat it
+  // was written for. Moving to another chat in the meantime drops the wait;
+  // the words stay in the composer.
+  const sendPromptRef = useRef<() => Promise<void>>(async () => undefined);
+  sendPromptRef.current = sendPrompt;
+  useEffect(() => {
+    if (compactingChatId !== null || sendAfterCompact === null) return;
+    const chatId = sendAfterCompact;
+    setSendAfterCompact(null);
+    if (workspace.selectedChatId === chatId) void sendPromptRef.current();
+  }, [compactingChatId, sendAfterCompact, workspace.selectedChatId]);
+
   const newChat = useCallback(() => {
     if (!hydrated || !storageAvailable || storageRecovery.required) return;
     const next = createChat(workspace);
@@ -998,10 +1043,15 @@ function App() {
    * report back to, so the run is abandoned first. The same applies to the open
    * chat, whose live view would otherwise stay on screen above a different
    * conversation.
+   *
+   * What the chat kept outside the window goes with it: a saved Claude session
+   * and Claude Code's transcript of the chat would otherwise outlive the chat
+   * the user deleted.
    */
   const removeChat = (projectId: string, chatId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
     resetRun(chatId, true);
+    void forgetChatSessions(chatId);
     setWorkspace((current) => deleteChat(current, projectId, chatId));
     clearComposer();
     setAttachments([]);
@@ -1010,7 +1060,10 @@ function App() {
 
   const removeProject = (projectId: string) => {
     if (!storageAvailable || storageRecovery.required) return;
-    for (const chat of workspace.projects.find((project) => project.id === projectId)?.chats ?? []) resetRun(chat.id, true);
+    for (const chat of workspace.projects.find((project) => project.id === projectId)?.chats ?? []) {
+      resetRun(chat.id, true);
+      void forgetChatSessions(chat.id);
+    }
     setWorkspace((current) => deleteProject(current, projectId));
     setExpandedProjects((current) => {
       const next = new Set(current);
@@ -1611,7 +1664,13 @@ function App() {
 
         <div className="conversation-scroll" ref={scrollRef} onScroll={onConversationScroll}><div className="conversation">
           {selectedChat && selectedChat.messages.length > 0
-            ? <ConversationMessages key={selectedChat.id} messages={selectedChat.messages} onOpenInStudio={openArtifactInStudio} />
+            ? <ConversationMessages
+              key={selectedChat.id}
+              messages={selectedChat.messages}
+              onOpenInStudio={openArtifactInStudio}
+              // The live run shows its own notes, with whether Claude has them yet.
+              hideTrailingNotes={runView !== null && runView.outcome === null}
+            />
             : <EmptyConversation onSuggestion={setComposer} />}
           {runView
             ? <LiveRun view={runView} steps={runSteps} nodes={runActivityNodes} onOpenInStudio={openArtifactInStudio} />
@@ -1661,6 +1720,10 @@ function App() {
                 says where the run is and offers the two things that can be done
                 about it from here: go to it, or stop it. */}
             {draggingImage && <div className="composer-drop-hint">Drop an image or a video to attach it</div>}
+            {sendAfterCompact !== null && sendAfterCompact === workspace.selectedChatId && <div className="attachment-notice compact-queued" role="status">
+              <span><Loader2 size={13} className="spin" aria-hidden="true" /> Queued: your message sends as soon as compacting finishes. You can keep editing it.</span>
+              <button onClick={() => setSendAfterCompact(null)}>Cancel</button>
+            </div>}
             {attachmentError && <div className="attachment-notice" role="alert">{attachmentError}<button onClick={() => setAttachmentError(null)} aria-label="Dismiss"><X size={14} /></button></div>}
             {attachments.length > 0 && <div className="attachment-row">{attachments.map((attachment) => <div className={`attachment-chip${attachment.clip === undefined ? "" : " clip"}`} key={attachment.id}>
               {attachment.thumbnailDataUrl ? <img className="attachment-thumbnail" src={attachment.thumbnailDataUrl} alt="" /> : attachment.clip === undefined ? <FileBox size={16} /> : <Film size={16} />}
@@ -1739,13 +1802,15 @@ function App() {
                 compactedUsage={compactedUsage}
                 canCompact={canCompact}
                 onCompact={() => void compactSelectedChat()}
+                compacting={compacting}
+                modelWritten={modelCompact}
               />
               {showRunControls && <button className="stop-button" onClick={stopRun}><Square size={11} fill="currentColor" aria-hidden="true" /> Stop</button>}
               {steering
                 ? pendingQuestion && composer.trim()
                   ? <button className="send-button answer-send" onClick={() => void sendSteer()}>Send as answer <ArrowUp size={16} aria-hidden="true" /></button>
                   : <button className="send-button" onClick={() => void sendSteer()} disabled={!composer.trim()} aria-label="Send note to the running task"><ArrowUp size={18} /></button>
-                : !showRunControls && <button className="send-button" onClick={() => void sendPrompt()} disabled={!hydrated || !storageAvailable || storageRecovery.required || isRunning || compacting || message === "" || (hasDesktopRuntime() && providerStatus.kind === "signed-in" && !selectedModel)} aria-label="Send message"><ArrowUp size={18} /></button>}
+                : !showRunControls && <button className="send-button" onClick={() => void sendPrompt()} disabled={!hydrated || !storageAvailable || storageRecovery.required || isRunning || message === "" || sendAfterCompact !== null || (hasDesktopRuntime() && providerStatus.kind === "signed-in" && !selectedModel)} aria-label={compacting ? "Send once compacting finishes" : "Send message"} title={compacting ? "Sends once compacting finishes" : undefined}><ArrowUp size={18} /></button>}
             </div>
           </div>
         </div>
@@ -1878,7 +1943,8 @@ const ConversationMessageView = memo(function ConversationMessageView({ message,
   onOpenInStudio: OpenInStudio;
 }) {
   return message.role === "user" ? (
-    <section className="message user-message" key={message.id}>
+    <section className={`message user-message${message.note === true ? " note-message" : ""}`} key={message.id}>
+      {message.note === true && <span className="note-label">Note sent while Roqer was working</span>}
       <p className="user-prompt">{message.text}</p>
       {message.attachments && message.attachments.length > 0 && <div className="message-attachments">{message.attachments.map((asset) => asset.clip !== undefined
         ? <figure key={asset.id} className="message-attachment-clip" title={asset.name}>
@@ -1898,10 +1964,18 @@ const ConversationMessageView = memo(function ConversationMessageView({ message,
   );
 });
 
-const ConversationMessages = memo(function ConversationMessages({ messages, onOpenInStudio }: {
+const ConversationMessages = memo(function ConversationMessages({ messages: allMessages, onOpenInStudio, hideTrailingNotes = false }: {
   messages: ChatMessage[];
   onOpenInStudio: OpenInStudio;
+  /** Leave out the notes after the last prompt: the live run below shows them. */
+  hideTrailingNotes?: boolean;
 }) {
+  const messages = useMemo(() => {
+    if (!hideTrailingNotes) return allMessages;
+    let end = allMessages.length;
+    while (end > 0 && allMessages[end - 1].note === true) end -= 1;
+    return end === allMessages.length ? allMessages : allMessages.slice(0, end);
+  }, [allMessages, hideTrailingNotes]);
   // The component is keyed by chat, so this index belongs to one transcript.
   // Appended messages leave it untouched and remain visible at the bottom.
   const [visibleFrom, setVisibleFrom] = useState(() => initialConversationWindowStart(messages.length));
@@ -2058,6 +2132,38 @@ function WaitingNotice({ label, detail, output }: { label: string; detail?: stri
   </div>;
 }
 
+/** One stretch of the reply, between steps. */
+function TranscriptText({ text, streaming }: { text: string; streaming: boolean }) {
+  if (text.trim() === "") return null;
+  return streaming
+    ? <StreamingMarkdown text={text.trim()} className="result-copy streaming-copy" />
+    : <Markdown text={text.trim()} className="result-copy" />;
+}
+
+/** A short run of steps is listed in full; a long one is folded by phase. */
+const INLINE_STEPS_UNFOLDED = 6;
+
+/**
+ * The steps taken between two stretches of prose, listed where they happened,
+ * the way Claude Code shows each tool between its messages. Each row opens to
+ * the operation, its target, and what came back.
+ */
+const InlineSteps = memo(function InlineSteps({ steps }: { steps: ActivityStep[] }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const onToggle = useCallback((key: string, open: boolean) => {
+    setExpanded((current) => (current[key] === open ? current : { ...current, [key]: open }));
+  }, []);
+  const nodes = useMemo(
+    () => (steps.length <= INLINE_STEPS_UNFOLDED ? steps.map(leafNode) : buildActivityModel(steps)),
+    [steps],
+  );
+  return <ol className="activity-timeline inline-steps">
+    {nodes.map((node) => (node.children.length === 0
+      ? <ActivityLeaf key={node.key} node={node} />
+      : <ActivityGroup key={node.key} node={node} open={expanded[node.key] ?? node.status === "active"} onToggle={onToggle} />))}
+  </ol>;
+});
+
 function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps: ActivityStep[]; nodes: ActivityNode[]; onOpenInStudio: OpenInStudio }) {
   const answered = view.text.trim() !== "";
   const running = view.outcome === null;
@@ -2078,9 +2184,25 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
   // thinking, and both of those already say so elsewhere.
   const thinking = running && providerIsThinking(view, nodes);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
+  // Keyed on what the segments are built from, which a streamed delta leaves
+  // alone: only the open stretch of prose grows, and it is sliced at render.
+  const { timeline, activities, evidence } = view;
+  const segments = useMemo(() => transcriptSegments({ timeline, activities, evidence }), [timeline, activities, evidence]);
   return <div className="mock-run"><section className="message assistant-message"><div className="message-content">
     {view.planner === DEMO_PLANNER && <p className="run-tag"><span className="run-badge">Demo</span></p>}
-    {running && <TypingIndicator done={produced} />}
+    <TaskList tasks={view.tasks} />
+    <div className="transcript">
+      {segments.map((segment, index) => segment.type === "steps"
+        ? <InlineSteps key={segment.key} steps={segment.steps} />
+        : <TranscriptText
+          key={segment.key}
+          text={view.text.slice(segment.start, segment.end ?? undefined)}
+          // Formatted as it streams, re-rendered a few times a second rather
+          // than on every delta, which would make a long reply quadratic.
+          streaming={running && index === segments.length - 1}
+        />)}
+    </div>
+    {running && !produced && <TypingIndicator done={false} />}
     {thinking && <WaitingNotice
       // Every turn opens with a progress label, so this is normally the
       // planner's own words; the fallback is for a planner that sends none.
@@ -2088,15 +2210,7 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       {...(view.status?.detail === undefined ? {} : { detail: view.status.detail })}
       output={view.outputTokens}
     />}
-    <TaskList tasks={view.tasks} />
-    <ActivitySection steps={steps} nodes={nodes} running={running} />
     <ResultsCard runId={view.runId} changes={view.changes} evidence={view.evidence} renderFiles={renderFiles} />
-    {answered && (running
-      // Parsing the whole growing document for every provider delta makes a
-      // long reply quadratic. Preserve the text while streaming, then render
-      // its Markdown once the completed message moves into history.
-      ? <div className="markdown result-copy streaming-copy"><p>{view.text}</p></div>
-      : <Markdown text={view.text} className="result-copy" />)}
     {appliedAndVerified && <AppliedStatus />}
     {view.outcome !== null && showOutcome && <OutcomeCard
       outcome={view.outcome}
@@ -2107,8 +2221,33 @@ function LiveRun({ view, steps, nodes, onOpenInStudio }: { view: RunView; steps:
       issues={runGateIssues(view)}
     />}
     {!running && <CompletionLine metadata={completionNote} usage={view.usage ?? undefined} />}
+    <RunNotes notes={view.notes} delivered={view.notesDelivered} running={running} />
     {view.desynchronized && <p className="run-warning"><AlertCircle size={14} /> Some updates were missed, so this timeline may be incomplete.</p>}
   </div></section></div>;
+}
+
+/**
+ * The notes sent while this run works, each with where it is: still queued
+ * in Roqer, or with the model. Claude reads a note at its next step; a
+ * provider that cannot take one mid-turn gets it when its turn ends.
+ */
+function RunNotes({ notes, delivered, running }: { notes: string[]; delivered: number; running: boolean }) {
+  if (notes.length === 0) return null;
+  return <ul className="run-notes" aria-label="Your notes">
+    {notes.map((note, index) => {
+      const sent = index < delivered;
+      return <li key={index} className={`run-note${sent ? " sent" : ""}`}>
+        <p className="run-note-text">{note}</p>
+        <span className="run-note-status">
+          {sent
+            ? <><Check size={12} aria-hidden="true" /> {running ? "Delivered, the model has it" : "Delivered"}</>
+            : running
+              ? <><Loader2 size={12} aria-hidden="true" className="spin" /> Queued, delivered at the next step</>
+              : "Not delivered: the run ended first. Send it again as a new message."}
+        </span>
+      </li>;
+    })}
+  </ul>;
 }
 
 /** One line of counts describing what a run actually did. */
@@ -2701,12 +2840,24 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
     record.finishedAt,
   );
   const steps = useMemo(() => recordSteps(record), [record]);
+  const segments = useMemo(() => recordTranscriptSegments(record), [record]);
   const renderFiles = useCallback((files: ChangeGroup[], expansion: FileExpansion) => <ChangeSet groups={files} expansion={expansion} onOpenInStudio={onOpenInStudio} />, [onOpenInStudio]);
   return <>
     <TaskList tasks={record.tasks ?? []} settled />
-    <ActivitySection steps={steps} running={false} />
-    <ResultsCard runId={record.runId} changes={record.changes} evidence={record.evidence} collapsed={!latest} renderFiles={renderFiles} />
-    <Markdown text={text} className="result-copy" />
+    {segments !== null
+      ? <>
+        <div className="transcript">
+          {segments.map((segment) => segment.type === "steps"
+            ? <InlineSteps key={segment.key} steps={segment.steps} />
+            : <TranscriptText key={segment.key} text={segment.text} streaming={false} />)}
+        </div>
+        <ResultsCard runId={record.runId} changes={record.changes} evidence={record.evidence} collapsed={!latest} renderFiles={renderFiles} />
+      </>
+      : <>
+        <ActivitySection steps={steps} running={false} />
+        <ResultsCard runId={record.runId} changes={record.changes} evidence={record.evidence} collapsed={!latest} renderFiles={renderFiles} />
+        <Markdown text={text} className="result-copy" />
+      </>}
     {appliedAndVerified && <AppliedStatus />}
     {showOutcome && <OutcomeCard
       outcome={record.outcome}
@@ -2716,6 +2867,9 @@ function RunRecordView({ record, text, latest, onOpenInStudio }: { record: RunRe
       issues={recordGateIssues(record)}
     />}
     <CompletionLine metadata={outcomeNote} usage={record.usage} />
+    {/* Notes the run ended before reading stay visible, so they can be sent again. */}
+    {record.notes !== undefined && record.notesDelivered !== undefined && record.notesDelivered < record.notes.length &&
+      <RunNotes notes={record.notes} delivered={record.notesDelivered} running={false} />}
   </>;
 }
 

@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +18,8 @@ import type { SkillLibrary } from "./skill-library";
 import { createSkillToolRunner, SKILL_TOOL_NAME, type SkillToolRunner } from "./skill-tool";
 import { STUDIO_TOOL_NAME } from "./studio-tools";
 import { createWorkbenchToolInvoker, workbenchMcpTools, workbenchToolNames } from "./workbench-tools";
-import { buildConversationPrompt, buildFollowUpPrompt, continuesConversation } from "./conversation-prompt";
+import { buildConversationPrompt, buildFollowUpPrompt, buildResumePrompt, continuesConversation } from "./conversation-prompt";
+import type { ClaudeSessionRegistry } from "./claude-session-registry";
 import type { ProviderSessionStore } from "./provider-sessions";
 import { runDeveloperInstructions } from "./run-instructions";
 import { createProseStream } from "./text-stream";
@@ -35,12 +37,23 @@ function steerText(text: string): string {
 }
 
 /**
- * Notes reach Claude only at a turn boundary, so the explanation behind a
- * "none of these" answer cannot ride along with the tool result. Say so, and
- * ask for the turn to end, rather than pointing at a note that is still queued.
+ * Notes are written to Claude Code as soon as they are queued, and it shows
+ * them to the model at its next step, so the explanation behind a "none of
+ * these" answer normally arrives with this result. If it has not, ending the
+ * turn makes Claude Code start the next one with it.
  */
 const ESCAPE_RESULT =
-  "The user chose none of the offered options. Their explanation is queued as a user note. End this turn now without further actions; Roqer will send that note as the next user message.";
+  "The user chose none of the offered options and explained why in a note. Do not act on any of the offered options. The note reaches you as a user message with this result; follow it. If you do not see it, end this turn without further actions and it will arrive as the next message.";
+
+/** How often queued notes are handed to Claude Code while a turn runs. */
+const NOTE_POLL_MS = 400;
+
+/**
+ * How long, after a turn ends with notes the model has not read, to wait for
+ * the turn Claude Code starts for them. It starts that turn by itself, usually
+ * within a few seconds; this is only the limit for a process that never does.
+ */
+const NOTE_TURN_TIMEOUT_MS = 60_000;
 
 /** The MCP server name Claude Code namespaces the tool under. */
 const MCP_SERVER_NAME = "workbench";
@@ -68,6 +81,9 @@ export type ClaudePlannerOptions = {
   skillLibrary: SkillLibrary;
   /** How long Claude may say nothing, outside a tool call, before the run is ended. Injectable for tests. */
   stallMs?: number;
+  /** How often queued notes are handed over mid-turn, and how long a run waits for the turn that reads them. For tests. */
+  notePollMs?: number;
+  noteTurnTimeoutMs?: number;
   /** The chat this run belongs to, which names its kept session. */
   chatId?: string;
   /** Where a chat's Claude Code process waits for its next message. Without it, every run starts a new one. */
@@ -78,6 +94,8 @@ export type ClaudePlannerOptions = {
   referenceClips?: boolean;
   /** Offer `external_mcp`: only while the user has at least one MCP server turned on. */
   externalMcp?: boolean;
+  /** Where each chat's saved Claude Code session is recorded. Without it, sessions are not saved. */
+  registry?: ClaudeSessionRegistry;
 };
 
 const isRecord = (value: unknown): value is JsonRecord =>
@@ -141,6 +159,17 @@ function systemPrompt(options: ClaudePlannerOptions, autoPlaytest: boolean): str
 }
 
 /**
+ * The saved Claude Code session a process continues, or starts under a fixed
+ * id so that the next process can resume it.
+ *
+ * `usage` is what the saved conversation had already spent, for a resumed
+ * session whose totals were recorded. Absent or null, the process cannot tell
+ * the conversation's totals from its own until its first result says what
+ * they are.
+ */
+export type SessionRef = { id: string; resume: boolean; usage?: ClaudeUsageTotals | null };
+
+/**
  * Write the system prompt beside the MCP config rather than onto the command
  * line.
  *
@@ -154,20 +183,30 @@ async function writeSystemPrompt(directory: string, text: string): Promise<strin
   return file;
 }
 
-function buildArguments(options: ClaudePlannerOptions, configPath: string, systemPromptPath: string): string[] {
+function buildArguments(
+  options: ClaudePlannerOptions, configPath: string, systemPromptPath: string, ref: SessionRef | null = null, slashCommands = false,
+): string[] {
   const args = [
     "--print",
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--verbose",
     "--include-partial-messages",
-    "--no-session-persistence",
+    // Claude Code echoes each user message at the moment the model is given
+    // it, which is how a run knows its notes were read.
+    "--replay-user-messages",
+    // A saved session survives the process: a failed or cancelled run, an
+    // idle close, a changed model, or a restart resumes it rather than
+    // starting the chat over from a bounded replay.
+    ...(ref === null ? ["--no-session-persistence"] : ref.resume ? ["--resume", ref.id] : ["--session-id", ref.id]),
     "--model", options.model,
     "--system-prompt-file", systemPromptPath,
     // Roqer owns every Studio action, so Claude Code keeps none of its own
     // tools: no shell, filesystem, web, subagents, or ambient native skills.
     "--tools", "",
-    "--disable-slash-commands",
+    // Only Roqer's own compaction process takes a slash command; a run's
+    // prompt is the user's text and is never read as one.
+    ...(slashCommands ? [] : ["--disable-slash-commands"]),
     "--setting-sources", "",
     "--strict-mcp-config",
     "--mcp-config", configPath,
@@ -305,8 +344,11 @@ export function claudeResultUsage(message: JsonRecord): { totals: Partial<Claude
   if (message.type !== "result" || message.parent_tool_use_id != null) return null;
   const totals: Partial<ClaudeUsageTotals> = {};
   const models = message.modelUsage;
-  if (isRecord(models)) {
-    const entries = Object.values(models);
+  const entries = isRecord(models) ? Object.values(models) : [];
+  // A result that named no model said nothing about tokens. Summing no models
+  // would read as zero, which a conversation measuring itself from nothing
+  // would take for the truth.
+  if (entries.length > 0) {
     const sum = (field: string): number | undefined => {
       let total = 0;
       for (const entry of entries) {
@@ -332,21 +374,52 @@ export function claudeResultUsage(message: JsonRecord): { totals: Partial<Claude
 }
 
 /**
- * One run's share of a Claude Code process's running totals.
+ * The totals a result gave, when it gave every one of them.
  *
- * A kept process carries the totals of every earlier run in the chat, so the
- * run reports what they grew by since it began. A figure that went down is a
- * zeroed error result, not a refund, and is ignored. Nothing is reported until
- * a result has given both the input and the output totals.
+ * A partial reading cannot stand in for a conversation's totals: a missing
+ * figure read as nothing would make the next run's share of it look larger
+ * than it was.
+ */
+export function completeUsageTotals(reading: Partial<ClaudeUsageTotals> | undefined): ClaudeUsageTotals | null {
+  if (reading === undefined) return null;
+  const { inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens, costUsd } = reading;
+  if (inputTokens === undefined || cacheReadTokens === undefined || cacheWriteTokens === undefined ||
+    outputTokens === undefined || costUsd === undefined) return null;
+  return { inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens, costUsd };
+}
+
+/**
+ * One run's share of a Claude Code conversation's running totals.
+ *
+ * A kept or resumed process carries the totals of every earlier run in the
+ * chat, so the run reports what they grew by since it began. A figure that
+ * went down is a zeroed error result, not a refund, and is ignored. Nothing is
+ * reported until a result has given both the input and the output totals.
  */
 export class ClaudeRunUsage {
-  private readonly baseline: ClaudeUsageTotals;
+  private baseline: ClaudeUsageTotals | null;
   private readonly seen = new Set<keyof ClaudeUsageTotals>();
   private requests: number | undefined;
 
-  /** `totals` is the process's own record, advanced in place for the next run. */
-  constructor(private readonly totals: ClaudeUsageTotals) {
-    this.baseline = { ...totals };
+  /**
+   * `totals` is the conversation's own record, advanced in place for the next
+   * run. `baselineKnown` is false when they are not what Claude Code will
+   * report, in which case the first result sets them and this run reports
+   * nothing rather than the whole conversation's figures.
+   */
+  constructor(private readonly totals: ClaudeUsageTotals, baselineKnown = true) {
+    this.baseline = baselineKnown ? { ...totals } : null;
+  }
+
+  /**
+   * Whether a result has said what the conversation's totals are, so they are
+   * worth saving for the next process to measure itself against. False until
+   * one has: a turn that ended without them leaves the totals as they were,
+   * and a zero saved over a conversation that spent more would be charged to
+   * whatever resumed it.
+   */
+  get totalsRecorded(): boolean {
+    return this.baseline !== null && this.seen.has("inputTokens") && this.seen.has("outputTokens");
   }
 
   /** Fold in one message; the run's usage so far when it was a result that said enough, else null. */
@@ -360,7 +433,16 @@ export class ClaudeRunUsage {
     }
     if (reading.requests !== undefined) this.requests = (this.requests ?? 0) + reading.requests;
     if (!this.seen.has("inputTokens") || !this.seen.has("outputTokens")) return null;
-    const grown = (name: keyof ClaudeUsageTotals) => this.totals[name] - this.baseline[name];
+    if (this.baseline === null) {
+      // The totals of a resumed conversation nobody recorded: this result
+      // covers every turn it ever had, so it becomes the baseline and this
+      // result reports nothing. Another result in the same run, from a turn
+      // started for a note, reports what it grew by from here.
+      this.baseline = { ...this.totals };
+      return null;
+    }
+    const base = this.baseline;
+    const grown = (name: keyof ClaudeUsageTotals) => this.totals[name] - base[name];
     return {
       inputTokens: grown("inputTokens"),
       ...(this.seen.has("cacheReadTokens") ? { cacheReadTokens: grown("cacheReadTokens") } : {}),
@@ -476,6 +558,18 @@ function assistantText(message: JsonRecord): string {
     .join("");
 }
 
+/** The text of a user message, as Claude Code echoes it. */
+function userMessageText(message: JsonRecord): string {
+  const payload = message.message;
+  if (!isRecord(payload)) return "";
+  if (typeof payload.content === "string") return payload.content;
+  if (!Array.isArray(payload.content)) return "";
+  return payload.content
+    .filter((block): block is JsonRecord => isRecord(block) && block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text as string)
+    .join("\n");
+}
+
 /** What one run needs to hear from the session it is using. */
 type RunBinding = {
   invoke(name: string, args: JsonRecord): Promise<WorkbenchMcpToolResult>;
@@ -508,15 +602,26 @@ export class ClaudeSession {
   /** The context window Claude Code last reported for that model, kept for the next run. */
   contextWindow: number | null = null;
   /**
-   * Claude Code's running usage totals for this process, as of its latest
-   * result. They start from nothing, since the process never resumes a saved
-   * session, and each run reports only what they grew by while it ran.
+   * Claude Code's running usage totals for the conversation this process
+   * holds, as of its latest result. Each run reports only what they grew by
+   * while it ran. A new conversation starts from nothing; a resumed one starts
+   * from the totals saved with it, since Claude Code counts every earlier turn
+   * of a session it resumes.
    */
   readonly usageTotals: ClaudeUsageTotals = {
     inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, costUsd: 0,
   };
+  /**
+   * Whether `usageTotals` is what Claude Code will report. False for a resumed
+   * session whose totals were not saved: until a result says what they are, a
+   * run cannot tell its own usage from the whole conversation's, and reports
+   * none rather than the conversation's figures as its own.
+   */
+  usageTotalsKnown = true;
   /** Skill documents delivered into this process's conversation and still in it. */
   readonly skills: SkillToolRunner;
+  /** The saved Claude Code session this process writes to, or null when none is kept. */
+  sessionId: string | null = null;
 
   private binding: RunBinding | null = null;
   private dead = false;
@@ -544,6 +649,8 @@ export class ClaudeSession {
     key: string,
     autoPlaytest: boolean,
     signal: AbortSignal,
+    ref: SessionRef | null = null,
+    slashCommands = false,
   ): Promise<ClaudeSession> {
     let session: ClaudeSession | null = null;
     const server = await startWorkbenchMcpServer({
@@ -560,8 +667,13 @@ export class ClaudeSession {
       const configPath = await writeMcpConfig(workingDirectory, server);
       const systemPromptPath = await writeSystemPrompt(workingDirectory, systemPrompt(options, autoPlaytest));
       if (signal.aborted) throw new Error("Run was cancelled.");
-      child = await options.launcher.launch(buildArguments(options, configPath, systemPromptPath));
+      child = await options.launcher.launch(buildArguments(options, configPath, systemPromptPath, ref, slashCommands));
       session = new ClaudeSession(key, child, server, workingDirectory, createSkillToolRunner(options.skillLibrary));
+      session.sessionId = ref?.id ?? null;
+      if (ref?.resume === true) {
+        if (ref.usage == null) session.usageTotalsKnown = false;
+        else Object.assign(session.usageTotals, ref.usage);
+      }
       session.attach();
       if (signal.aborted) throw new Error("Run was cancelled.");
       return session;
@@ -660,6 +772,32 @@ function sessionKey(options: ClaudePlannerOptions, { autoPlaytest, instanceId }:
 
 export type ClaudeSessionStore = ProviderSessionStore<ClaudeSession>;
 
+/** Told to a resumed session whose chat now points at a different Studio place. */
+const PLACE_CHANGED_NOTICE =
+  "[Roqer: this chat is now connected to a different Studio place than in your earlier turns. What you read before describes the other place; read this one before relying on it.]";
+
+/**
+ * Where Claude Code keeps a saved session: its config directory, then the
+ * working directory with every character other than a letter or digit made a
+ * dash. Used only to notice a session that is gone (deleted, or saved under a
+ * different config directory) before resuming it fails.
+ */
+export function claudeSessionFile(cwd: string, sessionId: string, env: NodeJS.ProcessEnv = process.env): string {
+  const configDirectory = env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  return path.join(configDirectory, "projects", cwd.replace(/[^A-Za-z0-9]/g, "-"), `${sessionId}.jsonl`);
+}
+
+async function savedSessionExists(cwd: string, sessionId: string): Promise<boolean> {
+  try {
+    return (await fs.stat(claudeSessionFile(cwd, sessionId))).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Claude Code's answer when `--resume` names a session it does not have. */
+const MISSING_SESSION = /no conversation found/i;
+
 /**
  * A model-driven planner backed by the user's Claude subscription.
  *
@@ -700,6 +838,59 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
       let runUsage: ClaudeRunUsage | undefined;
       /** The same usage request by request. */
       const requestLog = new ClaudeRequestLog();
+      /**
+       * Notes written to Claude Code that the model has not been given yet.
+       * Claude Code echoes a user message when it puts it in front of the
+       * model: mid-turn beside the next tool result, or, when the turn ends
+       * first, as the start of a turn of its own. Notes queued together can
+       * come back as one echo, so each is found by its text.
+       */
+      const unread: string[] = [];
+      /** After a turn ended with notes unread: waiting for the turn Claude Code starts for them. */
+      let noteTurn: ReturnType<typeof setTimeout> | null = null;
+      let notePoll: ReturnType<typeof setInterval> | null = null;
+      const sendNotes = (steers: string[]) => {
+        const texts = steers.map(steerText);
+        unread.push(...texts);
+        session!.writeUserMessage(texts.map((text) => ({ type: "text", text })));
+        context.status("Sent your note to Claude", steers.length === 1 ? steers[0] : `${steers.length} notes sent.`);
+      };
+      /**
+       * Hand queued notes to Claude Code now rather than at the end of the
+       * turn. It queues them and shows them to the model at its next step,
+       * the way a message typed into Claude Code mid-turn reaches it. They
+       * count as delivered only once Claude Code echoes them.
+       */
+      const deliverNotes = () => {
+        if (settled || session === undefined) return;
+        const steers = context.takeSteers({ confirmLater: true });
+        if (steers.length > 0) sendNotes(steers);
+      };
+      const noteEchoed = (message: JsonRecord) => {
+        let echoed = userMessageText(message);
+        let read = 0;
+        for (let index = 0; index < unread.length;) {
+          const at = echoed.indexOf(unread[index]);
+          if (at < 0) {
+            index += 1;
+            continue;
+          }
+          // Taken out of the echo, so two identical notes need two copies in it.
+          echoed = echoed.slice(0, at) + echoed.slice(at + unread[index].length);
+          unread.splice(index, 1);
+          read += 1;
+        }
+        if (read === 0) return;
+        context.steersRead?.(read);
+        if (noteTurn !== null) {
+          // The turn Claude Code started for them: its reply is this run's too.
+          clearTimeout(noteTurn);
+          noteTurn = null;
+          streaming = false;
+          prose.beginSegment();
+          turnProseStart = prose.text().length;
+        }
+      };
 
       const finish = (summary: string) => {
         if (settled) return;
@@ -746,6 +937,12 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
         // Any output is progress: with partial messages on, thinking streams
         // as events too, so a long silent-looking turn is still talking.
         watchdog.progressed();
+
+        if (message.type === "user") {
+          // Tool results come back as user messages too; only echoes matter.
+          if (message.isReplay === true) noteEchoed(message);
+          return;
+        }
 
         if (message.type === "rate_limit_event") {
           // A reached limit ends the turn with Claude Code's own message,
@@ -804,6 +1001,14 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
           const usage = runUsage?.observe(message);
           const perRequest = requestLog.snapshot();
           if (usage) context.runUsage(perRequest === undefined ? usage : { ...usage, perRequest });
+          if (runUsage?.totalsRecorded === true && session?.sessionId != null && registry !== undefined) {
+            // The totals now match what Claude Code reports for this session,
+            // so the next process to resume it can tell its own run apart.
+            session.usageTotalsKnown = true;
+            void registry.store.update(registry.chatId, {
+              sessionId: session.sessionId, usage: { ...session.usageTotals },
+            });
+          }
           if (session !== undefined) {
             session.contextWindow = claudeContextWindow(message, [session.mainModel, contextReading?.model ?? null]) ?? session.contextWindow;
           }
@@ -814,44 +1019,76 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
             return;
           }
           if (prose.text().length === turnProseStart && summary.trim()) prose.push(summary.trim());
-          // A result ends one user turn, not the stream-json session. Keep
-          // notes in the host queue until this boundary so Claude cannot
-          // merge them unpredictably into a turn that is already running.
-          const steers = context.takeSteers();
-          if (steers.length > 0) {
-            streaming = false;
-            prose.beginSegment();
-            turnProseStart = prose.text().length;
-            context.status("Sent your note to Claude", steers.length === 1 ? steers[0] : `${steers.length} notes sent.`);
-            session?.writeUserMessage(steers.map((text) => ({ type: "text", text: steerText(text) })));
+          // A result ends one user turn, not the stream-json session. A note
+          // still queued here, or written too late for this turn, is given
+          // to the model in a turn Claude Code starts for it, and the run
+          // goes on until that turn ends too.
+          deliverNotes();
+          const ended = () => finish(prose.text().trim() || summary.trim() || "Claude finished the turn.");
+          if (unread.length === 0) {
+            ended();
             return;
           }
-          finish(prose.text().trim() || summary.trim() || "Claude finished the turn.");
+          // A turn that ended without taking the notes leaves its wait behind:
+          // cleared here, so the run waits one more turn for them rather than
+          // however many turns Claude Code chooses to start.
+          if (noteTurn !== null) clearTimeout(noteTurn);
+          noteTurn = setTimeout(() => {
+            noteTurn = null;
+            // Never started: the run ends, its unread notes are shown as not
+            // delivered, and the process is closed below so it cannot answer
+            // them with no run to show it.
+            ended();
+          }, options.noteTurnTimeoutMs ?? NOTE_TURN_TIMEOUT_MS);
         }
       };
 
       const chatId = options.sessions !== undefined ? options.chatId : undefined;
+      const registry = options.registry !== undefined && options.chatId !== undefined
+        ? { store: options.registry, chatId: options.chatId }
+        : undefined;
       const key = sessionKey(options, context);
+      /** How the first message is written: to a live process, a resumed saved session, or a new one. */
+      let opening: "live" | "resumed" | "new" = "new";
+      /** The saved session this run writes to, if sessions are saved. */
+      let saved = registry === undefined ? undefined : await registry.store.get(registry.chatId);
       try {
-        // A kept session is used only when it has seen exactly this chat so
-        // far, under the settings this run asks for; anything else would put
-        // the model in a conversation the user is not looking at.
+        // A kept process is used only when it has seen exactly this chat so
+        // far, under the settings this run asks for. Any other is closed;
+        // its saved session is resumed below, so nothing it held is lost.
         const kept = chatId === undefined ? undefined : options.sessions!.take(chatId);
         if (kept !== undefined) {
           const current = kept.alive && kept.key === key && kept.lastPrompt !== null &&
-            continuesConversation(context.conversation, kept.lastPrompt);
-          if (current) session = kept;
-          else await kept.close();
+            continuesConversation(context.conversation, kept.lastPrompt) &&
+            (saved === undefined || kept.sessionId === saved.sessionId);
+          if (current) {
+            session = kept;
+            opening = "live";
+          } else await kept.close();
         }
-        const resumed = session !== undefined;
-        session ??= await ClaudeSession.open(options, key, context.autoPlaytest, context.signal);
+        if (session === undefined && saved !== undefined && !(await savedSessionExists(options.cwd, saved.sessionId))) {
+          // The saved conversation is gone; start a new one from the replay.
+          await registry!.store.forget(registry!.chatId);
+          saved = undefined;
+        }
+        if (session === undefined && saved !== undefined) {
+          session = await ClaudeSession.open(
+            options, key, context.autoPlaytest, context.signal,
+            { id: saved.sessionId, resume: true, usage: saved.usage },
+          );
+          opening = "resumed";
+        }
+        if (session === undefined) {
+          const ref = registry === undefined ? null : { id: randomUUID(), resume: false };
+          session = await ClaudeSession.open(options, key, context.autoPlaytest, context.signal, ref);
+        }
         if (settled) return await completion.promise;
         if (context.signal.aborted) throw new Error("Run was cancelled.");
         // A kept process is already connected, so there is nothing to wait for
         // but the model.
-        if (resumed) context.progress(waitingLabel);
+        if (opening === "live") context.progress(waitingLabel);
 
-        runUsage = new ClaudeRunUsage(session.usageTotals);
+        runUsage = new ClaudeRunUsage(session.usageTotals, session.usageTotalsKnown);
         session.bind({
           invoke: async (name, args) => {
             requestLog.toolCalled(requestToolLabel(name, args));
@@ -862,18 +1099,43 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
               return await invokeTool(name, args);
             } finally {
               release();
+              // Written before the result goes back, so a note sent while
+              // this call ran is with the model at its very next step.
+              deliverNotes();
             }
           },
           message: onMessage,
-          closed: fail,
+          closed: (error) => {
+            if (registry !== undefined && opening === "resumed" && MISSING_SESSION.test(error instanceof Error ? error.message : String(error))) {
+              void registry.store.forget(registry.chatId);
+              fail(new Error("Claude Code no longer has this chat's saved conversation. Send the message again to start a new one from the chat's history."));
+              return;
+            }
+            fail(error);
+          },
         });
         const skills = session.skills;
+        const isLoaded = (name: string) => skills.isLoaded(name);
+        const text = opening === "live"
+          ? buildFollowUpPrompt(context.conversation, context.prompt, isLoaded)
+          : opening === "resumed"
+            ? buildResumePrompt(
+              context.conversation, context.prompt, saved!.lastPrompt, isLoaded,
+              saved!.instanceId !== null && saved!.instanceId !== context.instanceId ? [PLACE_CHANGED_NOTICE] : [],
+            )
+            : buildConversationPrompt(context.conversation, context.prompt);
+        if (registry !== undefined && session.sessionId !== null) {
+          // Recorded before the model answers: from here on the saved session
+          // holds this prompt, whatever becomes of the run.
+          await registry.store.update(registry.chatId, {
+            sessionId: session.sessionId, lastPrompt: context.prompt, instanceId: context.instanceId, model: options.model,
+          });
+        }
+        notePoll = setInterval(deliverNotes, options.notePollMs ?? NOTE_POLL_MS);
         session.writeUserMessage([
           {
             type: "text",
-            text: resumed
-              ? buildFollowUpPrompt(context.conversation, context.prompt, (name) => skills.isLoaded(name))
-              : buildConversationPrompt(context.conversation, context.prompt),
+            text,
           },
           ...context.images.map((image) => ({
             type: "image",
@@ -883,12 +1145,14 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
 
         return await completion.promise;
       } finally {
+        if (notePoll !== null) clearInterval(notePoll);
+        if (noteTurn !== null) clearTimeout(noteTurn);
         context.signal.removeEventListener("abort", onAbort);
         watchdog.signal.removeEventListener("abort", onStall);
         watchdog.stop();
         if (session !== undefined) {
           session.bind(null);
-          if (succeeded && chatId !== undefined && session.alive) {
+          if (succeeded && chatId !== undefined && session.alive && unread.length === 0) {
             session.lastPrompt = context.prompt;
             options.sessions!.put(chatId, session);
           } else {
@@ -898,4 +1162,104 @@ export function createClaudePlanner(options: ClaudePlannerOptions): Planner {
       }
     },
   };
+}
+
+/** `noSession`: the chat has no saved Claude conversation to compact, so the caller compacts it another way. */
+export type ClaudeCompaction =
+  | { ok: true; preTokens: number | null; postTokens: number | null }
+  | { ok: false; message: string; noSession?: true };
+
+/** How long a compaction may take; summarizing a full context is one long model call. */
+const COMPACT_TIMEOUT_MS = 10 * 60_000;
+const COMPACT_STOPPED = "Compacting was stopped. The conversation is unchanged.";
+
+/**
+ * Compact one chat's saved conversation now, the way `/compact` does in
+ * Claude Code, instead of waiting for Claude Code to do it when the context
+ * fills.
+ *
+ * A run's process never takes slash commands, so the chat's live process (if
+ * any) is closed and a short-lived one resumes the saved session with them
+ * allowed, sends `/compact`, and exits. The next run resumes the compacted
+ * session. The caller makes sure no run is using the chat.
+ */
+export async function compactClaudeChat(
+  options: ClaudePlannerOptions & { chatId: string; registry: ClaudeSessionRegistry; signal?: AbortSignal },
+): Promise<ClaudeCompaction> {
+  // Already stopping: a compaction started now would outlive what asked for it.
+  if (options.signal?.aborted === true) return { ok: false, message: COMPACT_STOPPED };
+  const saved = await options.registry.get(options.chatId);
+  if (saved === undefined || !(await savedSessionExists(options.cwd, saved.sessionId))) {
+    // Claude Code clears old transcripts itself; a record of one it no longer
+    // has is forgotten, as a run would.
+    if (saved !== undefined) await options.registry.forget(options.chatId);
+    return { ok: false, message: "This chat has no saved Claude conversation to compact.", noSession: true };
+  }
+  const account = await options.getStatus();
+  if (account.kind !== "signed-in") return { ok: false, message: account.message };
+
+  const live = options.sessions?.take(options.chatId);
+  if (live !== undefined) await live.close();
+
+  const controller = new AbortController();
+  // Stopping (Roqer quitting) closes the compaction's process with it. The
+  // listener is dropped when this compaction ends: the signal it listens to is
+  // the app's own and outlives every compaction.
+  const stop = () => controller.abort();
+  options.signal?.addEventListener("abort", stop, { once: true });
+  const forget = () => options.signal?.removeEventListener("abort", stop);
+  const session = await ClaudeSession.open(
+    { ...options, model: saved.model ?? options.model }, "compact", false, controller.signal,
+    { id: saved.sessionId, resume: true, usage: saved.usage }, true,
+  ).catch((error: unknown) => {
+    forget();
+    throw error;
+  });
+  // Compacting spends tokens on the saved conversation, so the totals the next
+  // run measures itself against are recorded here too. Whatever ends the
+  // compaction without recording them leaves them cleared rather than stale:
+  // the next run then reports no usage instead of counting this one as its own.
+  let recorded = false;
+  const recordUsage = (usage: ClaudeUsageTotals | null) => {
+    recorded = true;
+    void options.registry.update(options.chatId, { sessionId: saved.sessionId, usage });
+  };
+  try {
+    return await new Promise<ClaudeCompaction>((resolve) => {
+      let preTokens: number | null = null;
+      let postTokens: number | null = null;
+      let boundary = false;
+      const timer = setTimeout(() => resolve({ ok: false, message: "Compacting took too long and was stopped. The conversation is unchanged." }), COMPACT_TIMEOUT_MS);
+      const done = (result: ClaudeCompaction) => {
+        clearTimeout(timer);
+        resolve(result);
+      };
+      controller.signal.addEventListener("abort", () => done({ ok: false, message: COMPACT_STOPPED }), { once: true });
+      session.bind({
+        invoke: async () => ({ ok: false, text: "No Roqer run is active. End this turn." }),
+        message: (message) => {
+          if (message.type === "system" && message.subtype === "compact_boundary") {
+            boundary = true;
+            const metadata = isRecord(message.compact_metadata) ? message.compact_metadata : {};
+            preTokens = tokenCount(metadata.pre_tokens) ?? null;
+            postTokens = tokenCount(metadata.post_tokens) ?? null;
+            return;
+          }
+          if (message.type !== "result") return;
+          recordUsage(completeUsageTotals(claudeResultUsage(message)?.totals));
+          if (boundary) done({ ok: true, preTokens, postTokens });
+          else {
+            const detail = typeof message.result === "string" && message.result.trim() !== "" ? ` ${message.result.trim()}` : "";
+            done({ ok: false, message: `Claude Code did not compact the conversation.${detail}` });
+          }
+        },
+        closed: (error) => done({ ok: false, message: error.message }),
+      });
+      session.writeUserMessage([{ type: "text", text: "/compact" }]);
+    });
+  } finally {
+    forget();
+    if (!recorded) recordUsage(null);
+    await session.close();
+  }
 }
