@@ -25,6 +25,8 @@ import { blenderToolDefinition, parseBlenderToolInput } from "./blender-tool";
 import { BLENDER_TOOL_NAME } from "../shared/blender";
 import { REFERENCE_CLIP_TOOL_NAME } from "../shared/reference-clip";
 import { parseReferenceClipToolInput, referenceClipToolDefinition } from "./reference-clip";
+import { EXTERNAL_MCP_TOOL_NAME } from "../shared/mcp-servers";
+import { externalMcpToolDefinition, parseExternalMcpToolInput } from "./external-mcp-tool";
 import { buildConversationPrompt, buildFollowUpPrompt, continuesConversation } from "./conversation-prompt";
 import {
   boundRetainedToolResults, compactHistory, describeRunState, retainedToolResultCharacters, type ToolOutputBudget,
@@ -178,6 +180,8 @@ export type AgentLoopPlannerOptions = {
   blender?: boolean;
   /** Offer `reference_clip`: only in a chat holding a clip the user attached. */
   referenceClips?: boolean;
+  /** Offer `external_mcp`: only while the user has at least one MCP server turned on. */
+  externalMcp?: boolean;
   /** The chat this run belongs to, which names its kept conversation. */
   chatId?: string;
   /** Where a chat's conversation waits for its next message. Without it, every run starts a new one. */
@@ -235,6 +239,7 @@ function sessionKey(options: AgentLoopPlannerOptions, { autoPlaytest, instanceId
     options.transportKey ?? null, options.plannerId ?? "agent-loop", options.modelId, autoPlaytest,
     options.agent.id, options.agent.version, options.blender === true, options.images !== false,
     options.toolOutputBudget ?? null, options.contextWindow ?? null, options.referenceClips === true,
+    options.externalMcp === true,
   ]);
 }
 
@@ -324,13 +329,14 @@ function isTurnImageMediaType(value: string): value is TurnImageMediaType {
   return (TURN_IMAGE_MEDIA_TYPES as readonly string[]).includes(value);
 }
 
-function loopTools(library: SkillLibrary, blender: boolean, referenceClips = false): TurnTool[] {
+function loopTools(library: SkillLibrary, blender: boolean, referenceClips = false, externalMcp = false): TurnTool[] {
   const textTools = [
     skillToolDefinition(library), iconToolDefinition(), taskToolDefinition(), questionToolDefinition(),
   ];
   const localTools = [
     ...(blender ? [blenderToolDefinition()] : []),
     ...(referenceClips ? [referenceClipToolDefinition()] : []),
+    ...(externalMcp ? [externalMcpToolDefinition()] : []),
   ];
   return [
     {
@@ -605,7 +611,7 @@ export function createAgentLoopPlanner(options: AgentLoopPlannerOptions): Planne
       let askedAfterSilence = false;
       // Broken tool calls in a row; a turn that forms a call resets it.
       let malformedInRow = 0;
-      const tools = loopTools(options.skillLibrary, options.blender === true, options.referenceClips === true);
+      const tools = loopTools(options.skillLibrary, options.blender === true, options.referenceClips === true, options.externalMcp === true);
       const instructions = {
         system: options.agent.systemInstructions,
         developer: runDeveloperInstructions(options.agent.developerInstructions, context.autoPlaytest),
@@ -721,13 +727,17 @@ export function createAgentLoopPlanner(options: AgentLoopPlannerOptions): Planne
           // A Blender job, and a closer look at a reference clip, return text
           // and an image the same way a screenshot does, so they share this
           // path and its image budget.
+          // A call to one of the user's MCP servers can return images too.
           const clipCall = options.referenceClips === true && call.name === REFERENCE_CLIP_TOOL_NAME;
-          if (call.name === STUDIO_TOOL_NAME || (options.blender === true && call.name === BLENDER_TOOL_NAME) || clipCall) {
+          const mcpCall = options.externalMcp === true && call.name === EXTERNAL_MCP_TOOL_NAME;
+          if (call.name === STUDIO_TOOL_NAME || (options.blender === true && call.name === BLENDER_TOOL_NAME) || clipCall || mcpCall) {
             const parsed = call.name === STUDIO_TOOL_NAME
               ? parseStudioToolInput(call.arguments)
               : clipCall
                 ? parseReferenceClipToolInput(call.arguments)
-                : parseBlenderToolInput(call.arguments);
+                : mcpCall
+                  ? parseExternalMcpToolInput(call.arguments)
+                  : parseBlenderToolInput(call.arguments);
             measuredTool = parsed.operation;
             const result = await runStudioTool(parsed.operation, parsed.args);
             const returnedImages = result.images ?? [];

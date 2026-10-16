@@ -99,6 +99,9 @@ const KIND_BY_TOOL: Readonly<Record<string, ToolActivityKind>> = {
   // Roqer's own operations, not Studio tools.
   run_blender_script: "run",
   capture_moments: "run",
+  // A call to one of the user's MCP servers is left out: what it does is the
+  // server's, so it reads as "run", the conservative default.
+  list_mcp_tools: "read",
 };
 
 /**
@@ -296,6 +299,15 @@ export function activityLabel(tool: string, target: string | null, past: boolean
   if (tool === "run_blender_script") return past ? "Modeled in Blender" : "Modeling in Blender";
   if (tool === "capture_moments") return past ? "Captured an effect at several moments" : "Capturing an effect at several moments";
   if (tool === "read_reference_clip") return past ? "Looked closer at the reference clip" : "Looking closer at the reference clip";
+  if (tool === "list_mcp_tools") {
+    const where = target === null ? "your MCP servers" : target.split("/")[0];
+    return past ? `Listed tools on ${where}` : `Listing tools on ${where}`;
+  }
+  if (tool === "download_mcp_file") return past ? "Downloaded a file an MCP server made" : "Downloading a file an MCP server made";
+  if (tool === "call_mcp_tool") {
+    if (target === null) return past ? "Used an MCP tool" : "Using an MCP tool";
+    return past ? `Used ${target}` : `Using ${target}`;
+  }
   if (tool === "animation") {
     if (target?.startsWith("build ")) return past ? "Built an animation" : "Building an animation";
     if (target?.startsWith("publish ")) return past ? "Published an animation" : "Publishing an animation";

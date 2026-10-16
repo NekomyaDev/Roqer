@@ -10,6 +10,7 @@ import type {
 } from "../shared/custom-providers";
 import type { OpenCloudCheckResult, OpenCloudSave, OpenCloudSettingsResult } from "../shared/open-cloud";
 import type { BlenderSettingsResult } from "../shared/blender";
+import type { McpServerSave, McpServersResult, McpServerTestResult } from "../shared/mcp-servers";
 import type { RojoResult } from "../shared/rojo";
 import type { ModelPreviewResult } from "../shared/model-preview";
 import type { EvidencePictureResult } from "../shared/evidence-picture";
@@ -165,6 +166,39 @@ export async function chooseBlender(): Promise<BlenderSettingsResult> {
 
 export async function redetectBlender(): Promise<BlenderSettingsResult> {
   return window.workbenchDesktop?.blender.redetect() ?? { ok: false, message: NO_DESKTOP_BLENDER };
+}
+
+const NO_DESKTOP_MCP_SERVERS = "Your own MCP servers need the desktop app.";
+
+export async function listMcpServers(): Promise<McpServersResult> {
+  return window.workbenchDesktop?.mcpServers.list() ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
+}
+
+/** A new program or a changed command is confirmed in a native dialog before it saves. */
+export async function saveMcpServer(save: McpServerSave): Promise<McpServersResult> {
+  return window.workbenchDesktop?.mcpServers.save(save) ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
+}
+
+export async function removeMcpServer(id: string): Promise<McpServersResult> {
+  return window.workbenchDesktop?.mcpServers.remove(id) ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
+}
+
+/** Connects to the saved server, not the draft on screen, and lists its tools. */
+export async function testMcpServer(id: string): Promise<McpServerTestResult> {
+  return window.workbenchDesktop?.mcpServers.test(id) ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
+}
+
+/** Signs in to the saved OAuth server in the browser; resolves when that finishes, fails or is cancelled. */
+export async function signInMcpServer(id: string): Promise<McpServersResult> {
+  return window.workbenchDesktop?.mcpServers.signIn(id) ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
+}
+
+export async function cancelMcpSignIn(): Promise<boolean> {
+  return window.workbenchDesktop?.mcpServers.cancelSignIn() ?? false;
+}
+
+export async function signOutMcpServer(id: string): Promise<McpServersResult> {
+  return window.workbenchDesktop?.mcpServers.signOut(id) ?? { ok: false, message: NO_DESKTOP_MCP_SERVERS };
 }
 
 const NO_DESKTOP_ROJO = "Rojo linking needs the desktop app.";
