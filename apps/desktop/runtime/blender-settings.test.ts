@@ -87,3 +87,22 @@ test("detection finds the newest installed Blender", async () => {
     assert.equal(await detectBlender({ ProgramFiles: path.join(directory, "nowhere") }, "win32"), null);
   });
 });
+
+test("detection on Linux finds Blender on PATH, in PATH's order, and never through a relative entry", { skip: process.platform === "win32" }, async () => {
+  await withFile(async (_file, directory) => {
+    const [first, second, empty] = ["first", "second", "empty"].map((name) => path.join(directory, name));
+    for (const folder of [first, second, empty]) await fs.mkdir(folder);
+    for (const folder of [first, second]) await fs.writeFile(path.join(folder, "blender"), "");
+    assert.equal(await detectBlender({ PATH: [empty, second, first].join(":") }, "linux"), path.join(second, "blender"));
+
+    const cwd = process.cwd();
+    process.chdir(first);
+    try {
+      // `.`, an empty entry, and a relative name all mean the current folder, which holds a `blender`.
+      const found = await detectBlender({ PATH: [".", "", "first", empty].join(":") }, "linux");
+      assert.ok(found === null || ["/usr/bin/blender", "/usr/local/bin/blender", "/snap/bin/blender"].includes(found), String(found));
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+});

@@ -131,7 +131,7 @@ Two consequences are worth knowing:
 | Place, script, property, and playtest tools | yes | yes |
 | Screenshots and profiler captures | yes | yes, written where the sandbox can reach |
 | Rojo projects | yes | yes; share the project folder to open place files from it |
-| Blender integration | yes | yes, with Blender on PATH or set in Settings |
+| Blender integration | yes | yes, with Blender on PATH, in `/usr/bin`, `/usr/local/bin` or `/snap/bin`, or chosen in Settings; not the Flatpak build |
 | Texture previews before upload | yes | yes, staged into Vinegar's Studio install |
 | Installing Codex or Claude Code from Settings | yes | no; install the CLI yourself |
 | Studio updates | Roblox's updater | Vinegar's, on each launch |

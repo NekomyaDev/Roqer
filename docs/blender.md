@@ -16,8 +16,9 @@ The integration is off until you turn it on.
 
 - **Blender**, installed normally. Roqer looks for it in the standard install
   folders: Program Files, your user Programs folder and Steam on Windows,
-  `/Applications` on macOS, and `/usr/bin`, `/usr/local/bin` or `/snap/bin` on
-  Linux. Anywhere else, you choose it yourself. It has been tested with
+  `/Applications` on macOS, and on PATH, `/usr/bin`, `/usr/local/bin` or
+  `/snap/bin` on Linux. Anywhere else, you choose it yourself. The Flatpak
+  build (`org.blender.Blender`) is not supported. It has been tested with
   Blender 5.2.
 - **A Roblox Open Cloud API key**, to put models into your place. The key needs
   the Assets API with Write access; set it up under **Settings → Roblox → Open

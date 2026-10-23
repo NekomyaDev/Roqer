@@ -63,7 +63,14 @@ export async function detectBlender(env: NodeJS.ProcessEnv = process.env, platfo
   } else if (platform === "darwin") {
     candidates.push("/Applications/Blender.app/Contents/MacOS/Blender");
   } else {
-    candidates.push("/usr/bin/blender", "/usr/local/bin/blender", "/snap/bin/blender");
+    // PATH first, so a build linked into ~/.local/bin or /opt is found; the
+    // fixed folders cover a desktop session whose PATH is
+    // narrower than the shell's. A relative or empty entry would make the
+    // current directory a candidate, so only absolute ones are searched.
+    const onPath = (env.PATH ?? "").split(":")
+      .filter((directory) => path.posix.isAbsolute(directory))
+      .map((directory) => path.posix.join(directory, "blender"));
+    candidates.push(...new Set([...onPath, "/usr/bin/blender", "/usr/local/bin/blender", "/snap/bin/blender"]));
   }
   const existing: string[] = [];
   for (const candidate of candidates) {
