@@ -326,13 +326,14 @@ test("a missing agy reads as not installed", async () => {
 
 test("agy is found where Google's installer puts it, or by override", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "agy-lookup-"));
+  const bin = path.win32.join(root, "agy", "bin");
+  const exe = path.win32.join(bin, "agy.exe");
   try {
-    const bin = path.win32.join(root, "agy", "bin");
     await fs.mkdir(bin, { recursive: true });
-    await fs.writeFile(path.win32.join(bin, "agy.exe"), "");
+    await fs.writeFile(exe, "");
     assert.equal(
       await resolveAntigravityExecutable({ env: { LOCALAPPDATA: root, PATH: "" }, platform: "win32" }),
-      path.win32.join(bin, "agy.exe"),
+      exe,
     );
     assert.equal(
       await resolveAntigravityExecutable({ env: { WORKBENCH_ANTIGRAVITY_EXECUTABLE: "C:\\tools\\agy.exe" }, platform: "win32" }),
@@ -343,6 +344,11 @@ test("agy is found where Google's installer puts it, or by override", async () =
       ClientNotInstalledError,
     );
   } finally {
+    // On a POSIX host `path.win32.join` turns the temp root into a relative
+    // name, backslashes and all, so these two land in the working directory
+    // instead of under `root` and have to be named to be removed.
+    await fs.rm(exe, { force: true });
+    await fs.rm(bin, { recursive: true, force: true });
     await fs.rm(root, { recursive: true, force: true });
   }
 });

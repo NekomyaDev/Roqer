@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { closeStudioProcess } from '../scripts/studio-lifecycle.mjs';
+import { closeStudioProcess, studioProcessIdentityRetained } from '../scripts/studio-lifecycle.mjs';
 import { McpClient, DIST, assert } from './lib/mcp-client.mjs';
 
 async function main() {
@@ -17,6 +17,36 @@ async function main() {
     });
     await client.start();
     await client.initialize();
+
+    if (!studioProcessIdentityRetained()) {
+      // Only the Windows launcher can hold Studio and prove which process it
+      // started. A host that cannot has to refuse the request before anything
+      // is spawned, and say what identifies a launch there instead; a launch
+      // that quietly went ahead would leave a Studio nobody owns.
+      console.log('\n=== process identity launch is refused where it cannot be retained ===');
+      const refused = await client.rpc('tools/call', {
+        name: 'manage_instance',
+        arguments: {
+          action: 'launch',
+          source: 'baseplate',
+          require_process_identity: true,
+          wait_for_connection: false,
+        },
+      }, 120000);
+      const text = refused?.content?.find((entry) => entry.type === 'text')?.text;
+      assert(typeof text === 'string', `refusal carries a body (${JSON.stringify(refused)})`);
+      const body = JSON.parse(text);
+      assert(refused.isError === true, 'the launch is refused as a tool error');
+      assert(body.error === 'process_identity_unavailable', `the refusal names the cause (${text})`);
+      assert(body.launch_stage === 'pre_spawn', `the refusal comes before a spawn (${text})`);
+      assert(body.process_created === false, `no Studio was started (${text})`);
+      assert(
+        typeof body.remediation === 'string' && body.remediation.length > 0,
+        `the refusal says how a launch is identified here (${text})`,
+      );
+      console.log('\n✅ process identity launch refusal PASSED');
+      return;
+    }
 
     console.log('\n=== WSL process identity launch without a working directory ===');
     const launch = await client.callTool('manage_instance', {

@@ -37,6 +37,21 @@ local playerGui = player:WaitForChild("PlayerGui")
 local old = playerGui:FindFirstChild("${FIXTURE_NAME}")
 if old then old:Destroy() end
 
+-- The top-left corner of the screen is CoreGui's: the unibar along the top and
+-- the chat window under it, whose frame reaches lower than the messages it
+-- draws. Real input into that corner is refused ("hits CoreGUI"), and the
+-- refusal depends on the platform's CoreGui scale, so the whole fixture is laid
+-- out below it. Only the offsets move; every rect the test asserts is a size or
+-- a position relative to another fixture.
+local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+local FIXTURE_HEIGHT = 320
+local topbarBottom = game:GetService("GuiService").TopbarInset.Max.Y
+local ORIGIN_Y = math.clamp(
+    math.floor(viewport.Y * 0.45),
+    topbarBottom + 16,
+    math.max(topbarBottom + 16, viewport.Y - FIXTURE_HEIGHT - 16)
+)
+
 local screen = Instance.new("ScreenGui")
 screen.Name = "${FIXTURE_NAME}"
 screen.IgnoreGuiInset = true
@@ -55,7 +70,7 @@ end)
 
 local valid = Instance.new("TextButton")
 valid.Name = "ValidButton"
-valid.Position = UDim2.fromOffset(20, 80)
+valid.Position = UDim2.fromOffset(20, ORIGIN_Y + 80)
 valid.Size = UDim2.fromOffset(120, 40)
 valid.Text = "Ready"
 valid.Parent = screen
@@ -70,7 +85,7 @@ end)
 
 local input = Instance.new("TextBox")
 input.Name = "SemanticInput"
-input.Position = UDim2.fromOffset(360, 80)
+input.Position = UDim2.fromOffset(360, ORIGIN_Y + 80)
 input.Size = UDim2.fromOffset(150, 36)
 input.PlaceholderText = "Type here"
 input.Text = ""
@@ -78,14 +93,14 @@ input.Parent = screen
 
 local viewportFrame = Instance.new("ViewportFrame")
 viewportFrame.Name = "SemanticViewport"
-viewportFrame.Position = UDim2.fromOffset(530, 130)
+viewportFrame.Position = UDim2.fromOffset(530, ORIGIN_Y + 130)
 viewportFrame.Size = UDim2.fromOffset(80, 50)
 viewportFrame.Parent = screen
 
 for index = 1, 2 do
     local duplicate = Instance.new("TextButton")
     duplicate.Name = "Duplicate" .. tostring(index)
-    duplicate.Position = UDim2.fromOffset(360 + (index - 1) * 100, 130)
+    duplicate.Position = UDim2.fromOffset(360 + (index - 1) * 100, ORIGIN_Y + 130)
     duplicate.Size = UDim2.fromOffset(90, 30)
     duplicate.Text = "Duplicate"
     duplicate.Parent = screen
@@ -93,7 +108,7 @@ end
 
 local overflow = Instance.new("TextLabel")
 overflow.Name = "OverflowText"
-overflow.Position = UDim2.fromOffset(20, 70)
+overflow.Position = UDim2.fromOffset(20, ORIGIN_Y + 70)
 overflow.Size = UDim2.fromOffset(80, 20)
 overflow.Text = "This text is intentionally much too wide"
 overflow.TextSize = 24
@@ -103,21 +118,20 @@ overflow.Parent = screen
 
 local zero = Instance.new("TextButton")
 zero.Name = "ZeroButton"
-zero.Position = UDim2.fromOffset(120, 70)
+zero.Position = UDim2.fromOffset(120, ORIGIN_Y + 70)
 zero.Size = UDim2.fromOffset(0, 0)
 zero.Text = "Zero"
 zero.Parent = screen
 
-local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
 local offscreen = Instance.new("Frame")
 offscreen.Name = "OffscreenFrame"
-offscreen.Position = UDim2.fromOffset(viewport.X + 100, 20)
+offscreen.Position = UDim2.fromOffset(viewport.X + 100, ORIGIN_Y + 20)
 offscreen.Size = UDim2.fromOffset(40, 40)
 offscreen.Parent = screen
 
 local clip = Instance.new("Frame")
 clip.Name = "ClipFrame"
-clip.Position = UDim2.fromOffset(180, 20)
+clip.Position = UDim2.fromOffset(180, ORIGIN_Y + 20)
 clip.Size = UDim2.fromOffset(50, 50)
 clip.ClipsDescendants = true
 clip.Parent = screen
@@ -131,7 +145,7 @@ clipped.Parent = clip
 
 local underlying = Instance.new("TextButton")
 underlying.Name = "OccludedUnderlying"
-underlying.Position = UDim2.fromOffset(540, 20)
+underlying.Position = UDim2.fromOffset(540, ORIGIN_Y + 20)
 underlying.Size = UDim2.fromOffset(120, 40)
 underlying.ZIndex = 1
 underlying.Text = "Underlying"
@@ -153,7 +167,7 @@ end)
 
 local nestedParent = Instance.new("TextButton")
 nestedParent.Name = "NestedParent"
-nestedParent.Position = UDim2.fromOffset(540, 70)
+nestedParent.Position = UDim2.fromOffset(540, ORIGIN_Y + 70)
 nestedParent.Size = UDim2.fromOffset(120, 40)
 nestedParent.Text = "Parent"
 nestedParent.Parent = screen
@@ -172,7 +186,7 @@ end)
 
 local hidden = Instance.new("Frame")
 hidden.Name = "HiddenParent"
-hidden.Position = UDim2.fromOffset(250, 20)
+hidden.Position = UDim2.fromOffset(250, ORIGIN_Y + 20)
 hidden.Size = UDim2.fromOffset(80, 50)
 hidden.Visible = false
 hidden.Parent = screen
@@ -185,7 +199,7 @@ hiddenChild.Parent = hidden
 
 local scroll = Instance.new("ScrollingFrame")
 scroll.Name = "ScrollFrame"
-scroll.Position = UDim2.fromOffset(20, 120)
+scroll.Position = UDim2.fromOffset(20, ORIGIN_Y + 120)
 scroll.Size = UDim2.fromOffset(150, 80)
 scroll.CanvasSize = UDim2.fromOffset(150, 240)
 scroll.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -203,7 +217,7 @@ below.Parent = scroll
 -- drop-shadow title that must not be mistaken for one.
 local card = Instance.new("Frame")
 card.Name = "OverlapCard"
-card.Position = UDim2.fromOffset(20, 220)
+card.Position = UDim2.fromOffset(20, ORIGIN_Y + 220)
 card.Size = UDim2.fromOffset(160, 90)
 card.Parent = screen
 
@@ -241,7 +255,7 @@ discount.Parent = card
 for index, offset in ipairs({ 2, 0 }) do
     local label = Instance.new("TextLabel")
     label.Name = index == 1 and "ShadowTitleBack" or "ShadowTitleFront"
-    label.Position = UDim2.fromOffset(200 + offset, 220 + offset)
+    label.Position = UDim2.fromOffset(200 + offset, ORIGIN_Y + 220 + offset)
     label.Size = UDim2.fromOffset(160, 24)
     label.BackgroundTransparency = 1
     label.ZIndex = index
@@ -252,7 +266,7 @@ end
 
 local shortScroll = Instance.new("ScrollingFrame")
 shortScroll.Name = "ShortScroll"
-shortScroll.Position = UDim2.fromOffset(380, 220)
+shortScroll.Position = UDim2.fromOffset(380, ORIGIN_Y + 220)
 shortScroll.Size = UDim2.fromOffset(150, 80)
 shortScroll.CanvasSize = UDim2.fromOffset(150, 80)
 shortScroll.Parent = screen

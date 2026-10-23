@@ -23,6 +23,33 @@ export type {
   PluginInstallResult,
   PluginVariant,
 } from './install-plugin-helpers.js';
+export {
+  VINEGAR_FLATPAK_ID,
+  detectVinegarInstall,
+  flatpakOverrideCommand,
+  flatpakVinegarDataDir,
+  forgetVinegarSandboxFilesystem,
+  getVinegarInstall,
+  getVinegarSandboxFilesystem,
+  getVinegarUserDirectories,
+  parseFlatpakFilesystems,
+  parseUserDirectories,
+  parseVinegarStudioProcesses,
+  resolveFlatpakFilesystems,
+  resolveVinegarPrefixUser,
+  resolveVinegarStudioExe,
+  toVinegarStudioPath,
+  vinegarCanReadPath,
+  vinegarDataDir,
+  vinegarPlaceFileDir,
+  vinegarReachRefusal,
+} from './studio-vinegar.js';
+export type {
+  VinegarEvidence,
+  VinegarInstall,
+  VinegarSandboxFilesystem,
+  VinegarUserDirectories,
+} from './studio-vinegar.js';
 export { RobloxCookieClient } from './roblox-cookie-client.js';
 export {
   canonicalBuiltInSkillName,

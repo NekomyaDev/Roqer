@@ -27,6 +27,16 @@ async function versions(root: string, folders: Record<string, { studio: boolean;
   }
 }
 
+/** A fake Vinegar data folder with Studio version folders under `versions`. */
+async function vinegarVersions(data: string, folders: Record<string, { studio: boolean; content: boolean }>): Promise<void> {
+  for (const [name, { studio, content }] of Object.entries(folders)) {
+    const install = path.join(data, "versions", name);
+    await fs.mkdir(install, { recursive: true });
+    if (studio) await fs.writeFile(path.join(install, "RobloxStudioBeta.exe"), "");
+    if (content) await fs.mkdir(path.join(install, "content"));
+  }
+}
+
 test("only Windows Studio installs with a content folder are found", async () => {
   await withTemp(async (root) => {
     await versions(root, {
@@ -40,6 +50,51 @@ test("only Windows Studio installs with a content folder are found", async () =>
     // macOS keeps content inside the signed app bundle, which is never written.
     assert.deepEqual(await findStudioContentDirectories({ LOCALAPPDATA: root }, "darwin"), []);
     assert.deepEqual(await findStudioContentDirectories({}, "win32"), []);
+  });
+});
+
+test("Linux finds the Studio Vinegar installed in its own Wine prefix", async () => {
+  await withTemp(async (root) => {
+    const data = path.join(root, ".var", "app", "org.vinegarhq.Vinegar", "data", "vinegar");
+    await vinegarVersions(data, {
+      "version-aaa": { studio: true, content: true },
+      "version-bbb": { studio: true, content: false },
+    });
+
+    assert.deepEqual(await findStudioContentDirectories({ HOME: root }, "linux"), [
+      path.join(data, "versions", "version-aaa", "content"),
+    ]);
+    // Windows looks at LOCALAPPDATA, which a Linux home folder does not supply.
+    assert.deepEqual(await findStudioContentDirectories({ HOME: root }, "win32"), []);
+    assert.deepEqual(await findStudioContentDirectories({}, "linux"), []);
+  });
+});
+
+test("a relocated Vinegar data folder is where Linux looks", async () => {
+  await withTemp(async (root) => {
+    const data = path.join(root, "elsewhere");
+    await vinegarVersions(data, { "version-aaa": { studio: true, content: true } });
+
+    assert.deepEqual(
+      await findStudioContentDirectories({ HOME: root, ROBLOX_STUDIO_VINEGAR_DATA_DIR: data }, "linux"),
+      [path.join(data, "versions", "version-aaa", "content")],
+    );
+  });
+});
+
+test("with Vinegar switched off, Linux has no install to stage into", async () => {
+  await withTemp(async (root) => {
+    const data = path.join(root, ".var", "app", "org.vinegarhq.Vinegar", "data", "vinegar");
+    await vinegarVersions(data, { "version-aaa": { studio: true, content: true } });
+
+    // The server will not run Studio through Vinegar, so its install is not
+    // the one a preview would reach.
+    for (const off of ["0", "false", "no", "off", " 0 "]) {
+      assert.deepEqual(await findStudioContentDirectories({ HOME: root, ROBLOX_STUDIO_VINEGAR: off }, "linux"), []);
+    }
+    assert.deepEqual(await findStudioContentDirectories({ HOME: root, ROBLOX_STUDIO_VINEGAR: "1" }, "linux"), [
+      path.join(data, "versions", "version-aaa", "content"),
+    ]);
   });
 });
 

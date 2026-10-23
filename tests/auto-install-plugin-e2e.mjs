@@ -15,6 +15,7 @@ import {
   closeStudioProcess,
   configureStudioDirectoryIsolation,
   createIsolatedStudioDirectory,
+  studioProcessIdentityRetained,
 } from '../scripts/studio-lifecycle.mjs';
 
 const VARIANTS = {
@@ -503,42 +504,57 @@ async function startManagerForArtifact(label, managerArtifact) {
   return startClient(label, managerArtifact, { autoInstall: false });
 }
 
+/** Whether a launch said which process it is, which is what closing one exactly needs. */
+function hasReportedIdentity(launch) {
+  return Number.isSafeInteger(launch?.pid) && launch.pid > 0 &&
+    typeof launch?.process_started_at_file_time === 'string' &&
+    /^[1-9]\d*$/u.test(launch.process_started_at_file_time);
+}
+
 async function launchManagedPlace(managerClient, { waitForConnection = true } = {}) {
   await configureStudioDirectoryIsolation({ requireStudioClosed: false });
+  // Holding Studio and proving its identity is the Windows launcher's doing.
+  // Where no launcher can, the request is refused before the spawn, so the
+  // launch is a plain one and there is no ownership to hand back.
+  const identityRetained = studioProcessIdentityRetained();
   const launched = await managerClient.callTool('manage_instance', {
     action: 'launch',
     source: 'baseplate',
-    require_process_identity: true,
+    require_process_identity: identityRetained,
     timeout_ms: 120000,
     ...(studioIsolation
       ? { studio_working_directory: studioIsolation.workingDirectory }
       : {}),
   }, 150000);
   assert(!!launched.launch_id, `manage_instance returned launch ownership (${JSON.stringify(launched)})`);
-  assert(
-    Number.isSafeInteger(launched.pid) &&
-      launched.pid > 0 &&
-      typeof launched.process_started_at_file_time === 'string',
-    `manage_instance returned exact Studio process identity (${JSON.stringify(launched)})`,
-  );
+  if (identityRetained) {
+    assert(
+      Number.isSafeInteger(launched.pid) &&
+        launched.pid > 0 &&
+        typeof launched.process_started_at_file_time === 'string',
+      `manage_instance returned exact Studio process identity (${JSON.stringify(launched)})`,
+    );
+  }
   ownedStudioLaunches.set(launched.launch_id, launched);
 
-  const authorized = await managerClient.callTool('manage_instance', {
-    action: 'authorize',
-    launch_id: launched.launch_id,
-  });
-  assert(
-    authorized.process_authorized === true,
-    `manage_instance authorized Studio launch ${launched.launch_id}`,
-  );
-  const completed = await managerClient.callTool('manage_instance', {
-    action: 'complete',
-    launch_id: launched.launch_id,
-  });
-  assert(
-    completed.process_ownership_released === true,
-    `manage_instance released Studio launch ${launched.launch_id}`,
-  );
+  if (identityRetained) {
+    const authorized = await managerClient.callTool('manage_instance', {
+      action: 'authorize',
+      launch_id: launched.launch_id,
+    });
+    assert(
+      authorized.process_authorized === true,
+      `manage_instance authorized Studio launch ${launched.launch_id}`,
+    );
+    const completed = await managerClient.callTool('manage_instance', {
+      action: 'complete',
+      launch_id: launched.launch_id,
+    });
+    assert(
+      completed.process_ownership_released === true,
+      `manage_instance released Studio launch ${launched.launch_id}`,
+    );
+  }
   if (!waitForConnection) return launched.launch_id;
 
 
@@ -594,10 +610,12 @@ async function closeManagedInstance(managerClient, instanceId) {
       throw managedError;
     }
     try {
-      await closeStudioProcess({
-        processId: launch.pid,
-        startedAtFileTime: launch.process_started_at_file_time,
-      });
+      if (hasReportedIdentity(launch)) {
+        await closeStudioProcess({
+          processId: launch.pid,
+          startedAtFileTime: launch.process_started_at_file_time,
+        });
+      }
     } catch (identityError) {
       const cleanupError = new AggregateError(
         [managedError, identityError],
@@ -878,10 +896,12 @@ async function main() {
     const cleanupErrors = [...deferredCleanupErrors];
     for (const launch of ownedStudioLaunches.values()) {
       try {
-        await closeStudioProcess({
-          processId: launch.pid,
-          startedAtFileTime: launch.process_started_at_file_time,
-        });
+        if (hasReportedIdentity(launch)) {
+          await closeStudioProcess({
+            processId: launch.pid,
+            startedAtFileTime: launch.process_started_at_file_time,
+          });
+        }
       } catch (error) {
         cleanupErrors.push(error);
       }

@@ -18,6 +18,36 @@ state it starts.
    scripts that reuse an already-open Studio instance.
 3. **`HttpEnabled = true`** in Studio Experience Settings (Security tab).
 
+On Linux, Studio runs inside Vinegar's Flatpak sandbox
+([docs/linux.md](../docs/linux.md)). `npm run test:e2e`,
+`npm run test:studio:runner` and `npm run test:e2e:lifecycle` pass there; the
+helpers resolve Vinegar's prefix, launch through `flatpak run`, and address
+place files as the prefix sees them. Three things differ:
+
+- **No per-worker plugin folder.** Studio reads its plugins from the Wine
+  prefix, and there is one prefix per Vinegar install, so the setting that
+  points a Windows Studio at a worker folder has nothing to point at and Studio
+  ignores it. A worker *borrows* the prefix's plugins folder instead: what is
+  installed moves aside, the suite installs the worktree plugin, and the first
+  set comes back afterwards, including after a killed suite. Only one such
+  suite can run at a time, and `npm run test:studio:parallel`, whose subject is
+  two isolated Studios at once, refuses to run with that said rather than
+  pretending to isolate them.
+- **No retained process identity.** `require_process_identity` is refused
+  before the spawn, so the managed suites ask for a plain launch and identify
+  Studio from what the server observed. `npm run test:e2e:wsl-process-identity`
+  asserts that refusal instead of the Windows behaviour.
+- **A place file has to be somewhere the sandbox reads.** The suites stage
+  theirs inside Vinegar's own data folder. A place file in this worktree needs
+  the worktree shared with Vinegar first.
+
+`npm run test:e2e:auto-install` gets as far as its inspector case on Linux and
+fails there, for a reason that is not Linux's: the case starts a full-edition
+manager to launch Studio, that manager owns the bridge port, and it answers the
+inspector plugin `409 plugin_variant_mismatch`, so the plugin never registers.
+Nothing in that ordering is platform-specific, but it has not been checked on
+Windows.
+
 ## Run
 
 **Feature completion gate:** a feature is not complete until

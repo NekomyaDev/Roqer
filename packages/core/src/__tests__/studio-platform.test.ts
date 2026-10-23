@@ -70,6 +70,57 @@ describe('Studio platform capabilities', () => {
     });
   });
 
+  test('native Linux with Vinegar runs Studio through Wine', () => {
+    const capabilities = detectStudioPlatform({
+      platform: 'linux',
+      kernelVersion: NATIVE_LINUX_KERNEL,
+      windowsInteropAvailable: false,
+      vinegarAvailable: true,
+    });
+    expect(capabilities).toMatchObject({
+      hostPlatform: 'linux',
+      isWsl: false,
+      studioRuntime: 'wine-vinegar',
+      // Vinegar hands each launch to its own single application instance, so no
+      // caller can hold a suspended Studio and prove its creation identity.
+      processIdentity: {
+        supported: false,
+        launcher: 'unavailable',
+      },
+    });
+    expect(capabilities.processIdentity.reason).toMatch(/Vinegar/);
+  });
+
+  test('native Linux without Vinegar can run Studio no way at all', () => {
+    const capabilities = detectStudioPlatform({
+      platform: 'linux',
+      kernelVersion: NATIVE_LINUX_KERNEL,
+      windowsInteropAvailable: false,
+      vinegarAvailable: false,
+    });
+    expect(capabilities.studioRuntime).toBe('unavailable');
+    expect(capabilities.processIdentity.reason).toMatch(/Vinegar/);
+  });
+
+  test('a host that runs Studio itself reports a native runtime', () => {
+    expect(detectStudioPlatform({ platform: 'win32' }).studioRuntime).toBe('native');
+    expect(detectStudioPlatform({ platform: 'darwin' }).studioRuntime).toBe('native');
+    expect(detectStudioPlatform({
+      platform: 'linux',
+      kernelVersion: WSL_KERNEL,
+      windowsInteropAvailable: true,
+    }).studioRuntime).toBe('native');
+  });
+
+  test('a WSL kernel never uses Vinegar, which cannot reach the Windows Studio', () => {
+    expect(detectStudioPlatform({
+      platform: 'linux',
+      kernelVersion: WSL_KERNEL,
+      windowsInteropAvailable: false,
+      vinegarAvailable: true,
+    }).studioRuntime).toBe('unavailable');
+  });
+
   test('a container sharing a WSL kernel is rejected without live Windows interop', () => {
     expect(detectStudioPlatform({
       platform: 'linux',
