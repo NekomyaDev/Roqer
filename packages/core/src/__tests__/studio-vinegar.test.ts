@@ -7,6 +7,7 @@ import {
   flatpakVinegarDataDir,
   forgetVinegarSandboxFilesystem,
   getVinegarSandboxFilesystem,
+  hostUserName,
   parseFlatpakFilesystems,
   parseProcessStartTicks,
   parseUserDirectories,
@@ -113,6 +114,21 @@ describe('Vinegar discovery', () => {
     // profile it creates after the host user.
     expect(resolveVinegarPrefixUser(prefix, 'dev', () => [])).toBe('dev');
     expect(resolveVinegarPrefixUser(prefix, 'dev', () => ['alice', 'bob'])).toBe('dev');
+  });
+
+  test('a user id with no account still probes, falling back to the login name and then to no prefix user', () => {
+    const noAccount = () => {
+      throw Object.assign(new Error('uv_os_get_passwd returned ENOENT'), { code: 'ERR_SYSTEM_ERROR' });
+    };
+    expect(hostUserName(() => ({ username: 'dev' }), { USER: 'other' })).toBe('dev');
+    expect(hostUserName(noAccount, { USER: 'dev', LOGNAME: 'other' })).toBe('dev');
+    expect(hostUserName(noAccount, { LOGNAME: 'dev' })).toBe('dev');
+    expect(hostUserName(noAccount, {})).toBe('');
+    // With no name and a prefix that does not settle it, there is no install
+    // rather than a plugins folder under a made-up profile.
+    expect(detectVinegarInstall(linuxEvidence({
+      prefixUser: resolveVinegarPrefixUser('/data/prefixes/studio', hostUserName(noAccount, {}), () => []),
+    }))).toBeUndefined();
   });
 
   test('a host that cannot run Vinegar has no install', () => {

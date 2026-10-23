@@ -588,6 +588,26 @@ export function resolveVinegarPrefixUser(
   return profiles.length === 1 ? profiles[0] : hostUser;
 }
 
+/**
+ * The name of the user this process runs as, or an empty string.
+ *
+ * `os.userInfo()` throws when the user id has no entry in the user database,
+ * as in a container started with `--user 1234`. Every host probes Vinegar,
+ * the plugin installer included, so a throw here failed them all; such a
+ * process falls back to the login variables, and with neither it has no
+ * prefix user, which means no Vinegar install.
+ */
+export function hostUserName(
+  userInfo: () => { username: string } = os.userInfo,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  try {
+    return userInfo().username;
+  } catch {
+    return env.USER?.trim() || env.LOGNAME?.trim() || '';
+  }
+}
+
 function liveVinegarEvidence(): VinegarEvidence {
   const home = os.homedir();
   const dataDirOverride = process.env[VINEGAR_DATA_DIR_ENV];
@@ -601,7 +621,7 @@ function liveVinegarEvidence(): VinegarEvidence {
       ? undefined
       : resolveVinegarPrefixUser(
           path.join(dataDir, 'prefixes', 'studio'),
-          os.userInfo().username,
+          hostUserName(),
         ),
   };
   if (process.platform !== 'linux') return evidence;
